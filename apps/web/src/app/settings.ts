@@ -18,7 +18,7 @@ export const PROGRESS_KEY = 'listen-up.progress.v1';
 
 export const defaultSettings: AppSettings = {
   provider: {
-    baseUrl: 'https://api.openai.com/v1',
+    baseUrl: 'https://api.deepseek.com/v1',
     apiKey: '',
     model: '',
     temperature: 0.4,
@@ -28,10 +28,33 @@ export const defaultSettings: AppSettings = {
 };
 
 export const providerPresets = [
-  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
-  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
-  { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
-  { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+    note: '便宜，支持工具调用',
+    recommended: true,
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    note: '已经有 OpenAI 账号',
+    recommended: false,
+  },
+  {
+    id: 'ollama',
+    label: '本地 Ollama',
+    baseUrl: 'http://localhost:11434/v1',
+    model: 'qwen3:8b',
+    keyUrl: 'https://ollama.com/download',
+    note: '免费，本地运行',
+    recommended: false,
+  },
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

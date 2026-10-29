@@ -4,6 +4,10 @@
 
 项目目前是可玩的垂直切片：三关、完整 AI 循环、设置、对白、规则板和行动轨迹。
 
+![首屏：你说一句，Echo 去做](docs/screenshots/title.jpg)
+
+![第一次进入：先试一句，不用 key](docs/screenshots/prologue.jpg)
+
 ![第一关：垫脚箱](docs/screenshots/level-1.png)
 
 ![第二关：等我过桥](docs/screenshots/level-2.png)
@@ -19,7 +23,7 @@ pnpm install
 pnpm dev
 ```
 
-打开 http://127.0.0.1:5173 。首次进入先在“设置”里填一个支持 OpenAI Chat Completions 与 tool calling 的接口。
+打开 http://127.0.0.1:5173 。首次进入可以先点“试一句”看 30 秒演示，不需要 key；要玩完整关卡，再到“连接模型”里填一个支持 OpenAI Chat Completions 与 tool calling 的接口。
 
 ```sh
 pnpm build      # 静态产物在 apps/web/dist
@@ -28,6 +32,8 @@ pnpm test:e2e   # Playwright 烟雾测试
 ```
 
 ## 模型接口
+
+![连接 Echo 的大脑](docs/screenshots/connect.jpg)
 
 - 只支持 OpenAI 格式的 `POST {baseUrl}/chat/completions`，使用 `stream: true` 和 `tools`。
 - Base URL、API Key、模型名、Temperature 都在游戏内设置；模型必须支持 function calling。

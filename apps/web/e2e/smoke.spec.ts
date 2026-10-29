@@ -85,7 +85,7 @@ test('Echo executes a mocked tool call and pushes the crate', async ({ page }) =
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: '关卡' }).click();
+  await page.getByRole('button', { name: '关卡', exact: true }).click();
   await page.getByRole('button', { name: '进入关卡' }).first().click();
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '开始', exact: true }).click();

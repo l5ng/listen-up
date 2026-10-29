@@ -1,4 +1,4 @@
-import { COMPANION_NAME } from '@listen-up/sim';
+import { COMPANION_NAME, PLAYER_NAME } from '@listen-up/sim';
 
 export const copy = {
   title: 'Listen Up',
@@ -50,4 +50,56 @@ export const copy = {
   creditsTitle: '模型与素材',
   creditsBody:
     'Kenney Platformer Kit 4.1（CC0，https://kenney.nl/assets/platformer-kit）。three.js、React Three Fiber、Lucide 与 Baloo 2 的许可信息见仓库 CREDITS.md。',
+
+  tagline: '你说一句，Echo 去做。',
+  titleLead:
+    '3D 双人解谜。你是 ' + PLAYER_NAME + '，' + COMPANION_NAME + ' 是听得懂中文的 AI 搭子。',
+  titleTry: '试一句（不用 key）',
+  titleConnect: '连接模型',
+  titlePlay: '进入关卡',
+  titleDemo: '看 30 秒演示',
+  titleTrust: '本站无需账号 · 密钥只存本机 · 支持本地模型',
+  titleMeta: '三关 · 约 20 分钟 · 浏览器直接玩',
+  pointTalk: '说人话，不用选对话选项',
+  pointMove: '它自己找路、推箱、等你',
+  pointTogether: '你负责跳和拉杆，它去你去不了的地方',
+  connectTitle: '连接 Echo 的大脑',
+  connectLead:
+    '这个游戏没有服务器。' +
+    COMPANION_NAME +
+    ' 的每句话，都由你选择的模型实时生成，所以需要你的 API key。',
+  connectWhyTitle: '为什么需要你的 key',
+  connectWhy:
+    '没有内置 key，也没有代理。密钥只存在这台设备的浏览器里，只会发给你填写的接口地址；没有账号，没有遥测。',
+  connectTrustStored: '只存本机',
+  connectTrustEndpoint: '只发给你填的地址',
+  connectTrustNoAccount: '无账号 · 无遥测',
+  connectTrustRevoke: '可随时吊销',
+  connectCost: '按量计费，通常一关很低；可以先在服务商后台设一个消费上限。',
+  connectFallback: '没有 key？先试一句',
+  connectRecommended: '推荐',
+  connectGetKey: '获取 key',
+  connectInstall: '安装',
+  connectAdvanced: '自定义接口与高级设置',
+  connectModelHint: '必须支持 OpenAI tools / function calling。',
+  connectBaseHint: '选上面的服务商会自动填好；自定义端点一般以 /v1 结尾。',
+  connectLocalHint:
+    '本地 Ollama 免费，但需要先安装并允许浏览器跨域。启动前设置 OLLAMA_ORIGINS，或参考仓库 README。',
+  connectSaved: '保存后就可以进入关卡。',
+  connectTestHint: '测试会请求一次模型列表；失败也可能是服务商的 CORS 限制。',
+  prologueBadge: '演示',
+  prologueStep: '第 1 句 · 让它动手',
+  prologueTitle: '对 ' + COMPANION_NAME + ' 说：把木箱推下来。',
+  prologueLead: '它会听懂，然后自己走过去、把箱子推下高台。',
+  prologueBusy: '正在照做…',
+  prologueDoneTitle: '刚才的 Echo 是排练好的。',
+  prologueDoneLead:
+    '正式版里，它由你的模型驱动，能听懂你没预设过的话。可能慢一点，也可能犯错，但它是真的在听。',
+  prologueConnect: '连接模型，继续',
+  prologueRetry: '再试一次',
+  prologueSkip: '跳过演示，直接连接',
+  prologueSkipShort: '跳过演示',
+  prologueFallback: '演示里我只听得懂推箱子。点下面的句子，或者直接连接模型。',
+  prologueInput: '对 ' + COMPANION_NAME + ' 说点什么…',
+  exampleCta: '用这句话开始',
 } as const;

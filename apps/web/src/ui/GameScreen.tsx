@@ -156,13 +156,19 @@ export function GameScreen({
 
   const canControl = !paused && !introOpen && !typing && ui.status === 'playing';
 
-  const send = () => {
-    const clean = text.trim();
+  const send = (value?: string) => {
+    const clean = (value ?? text).trim();
     if (!clean) return;
     session.say(clean);
     setText('');
-    setSentCount((value) => value + 1);
+    setSentCount((count) => count + 1);
     textareaRef.current?.blur();
+  };
+
+  const startWithExample = (value: string) => {
+    setIntroOpen(false);
+    setText(value);
+    window.setTimeout(() => send(value), 80);
   };
 
   useEffect(() => {
@@ -359,7 +365,7 @@ export function GameScreen({
             />
             <button
               className="send-btn"
-              onClick={send}
+              onClick={() => send()}
               disabled={!text.trim()}
               aria-label={copy.send}
               type="button"
@@ -414,7 +420,18 @@ export function GameScreen({
             <h2>{level.summary}</h2>
             <div className="goal">{level.goal}</div>
             <div className="example-line">
-              可以这样对 {COMPANION_NAME} 说：“{example}”
+              <span>可以这样对 {COMPANION_NAME} 说：</span>
+              <button
+                className="example-chip"
+                type="button"
+                onClick={() => startWithExample(example)}
+                aria-label={`${copy.exampleCta}：${example}`}
+                title={copy.exampleCta}
+              >
+                <MessageCircle size={15} />
+                {example}
+                <Send size={14} />
+              </button>
             </div>
             <ControlsGrid />
             <div className="row" style={{ justifyContent: 'space-between' }}>
