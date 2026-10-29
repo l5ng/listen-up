@@ -4,7 +4,7 @@ function sse(deltas: unknown[]): string {
   return deltas.map((delta) => `data: ${JSON.stringify(delta)}\n\n`).join('') + 'data: [DONE]\n\n';
 }
 
-test('B executes a mocked tool call and pushes the crate', async ({ page }) => {
+test('Echo executes a mocked tool call and pushes the crate', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -93,7 +93,7 @@ test('B executes a mocked tool call and pushes the crate', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '帮助与键位' })).toBeVisible();
   await expect(page.getByText('W A S D')).toBeVisible();
   await page.getByRole('button', { name: '知道了' }).click();
-  const input = page.getByRole('textbox', { name: '告诉 B 要做什么' });
+  const input = page.getByRole('textbox', { name: '告诉 Echo 要做什么' });
   await input.fill('把木箱推下来给我垫脚');
   await input.press('Enter');
 

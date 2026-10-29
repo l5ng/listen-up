@@ -1,4 +1,5 @@
 import type { BlockSpec, DecorSpec, LevelDef, LevelProp, Vec3 } from './types';
+import { COMPANION_NAME, PLAYER_NAME } from './names';
 
 function slab(
   x0: number,
@@ -26,7 +27,7 @@ function decor(id: string, model: string, at: Vec3, scale = 1, rotation = 0): De
 const levelOne: LevelDef = {
   id: 'sky-01',
   name: '垫脚箱',
-  summary: '让 B 把木箱推下来，帮你爬上去。',
+  summary: `让 ${COMPANION_NAME} 把木箱推下来，帮你爬上去。`,
   goal: '两个人都到达高台上的旗门。',
   spawns: {
     a: { x: 3.5, y: 0.02, z: 4.5 },
@@ -78,7 +79,7 @@ const levelOne: LevelDef = {
     },
     {
       id: 'b_platform',
-      label: 'B 所在的上层平台',
+      label: `${COMPANION_NAME} 所在的上层平台`,
       aliases: ['上层平台', '你所在的平台'],
       at: { x: 6, y: 2, z: 10.5 },
     },
@@ -97,23 +98,23 @@ const levelOne: LevelDef = {
   ],
   briefing: [
     '地图：',
-    '- 下层院子（A 起点）：西侧低处，长着草。',
-    '- 上层平台（B 起点）：北侧高台，木箱 crate_1 在靠近院子一侧的边缘。',
+    `- 下层院子（${PLAYER_NAME} 起点）：西侧低处，长着草。`,
+    `- 上层平台（${COMPANION_NAME} 起点）：北侧高台，木箱 crate_1 在靠近院子一侧的边缘。`,
     '- 高台：东侧，比院子高 2 米，旗门在高台上。',
     '- 从上层平台到高台之间有一道缺口，拉杆 lever_1 会展开木桥 bridge_1。',
-    '关系：木箱被推下后会落在院子的 crate_landing 附近，A 可以踩着它跳上高台。',
+    `关系：木箱被推下后会落在院子的 crate_landing 附近，${PLAYER_NAME} 可以踩着它跳上高台。`,
   ].join('\n'),
   hints: [
-    '试试对 B 说：把木箱推下来给我垫脚。',
-    'A 踩上木箱后再跳一次，就能到高台。',
-    '高台上有拉杆，按 E 拉下它，B 就能过桥。',
+    `试试对 ${COMPANION_NAME} 说：把木箱推下来给我垫脚。`,
+    `${PLAYER_NAME} 踩上木箱后再跳一次，就能到高台。`,
+    `高台上有拉杆，按 E 拉下它，${COMPANION_NAME} 就能过桥。`,
   ],
 };
 
 const levelTwo: LevelDef = {
   id: 'sky-02',
   name: '等我过桥',
-  summary: '让 B 等你踩住机关，再过桥。',
+  summary: `让 ${COMPANION_NAME} 等你踩住机关，再过桥。`,
   goal: '两个人都到达西岛的旗门。',
   spawns: {
     a: { x: 2, y: 0.02, z: 4 },
@@ -151,13 +152,13 @@ const levelTwo: LevelDef = {
     {
       id: 'west_island',
       label: '西岛',
-      aliases: ['A 这一边', '出发的岛'],
+      aliases: [`${PLAYER_NAME} 这一边`, '出发的岛'],
       at: { x: 2, y: 0, z: 4 },
     },
     {
       id: 'east_island',
       label: '东岛',
-      aliases: ['B 那一侧', '对面岛'],
+      aliases: [`${COMPANION_NAME} 那一侧`, '对面岛'],
       at: { x: 13, y: 0, z: 4 },
     },
     { id: 'bridge_center', label: '桥中央', aliases: ['桥上'], at: { x: 8, y: 0, z: 4 } },
@@ -173,18 +174,21 @@ const levelTwo: LevelDef = {
   ],
   briefing: [
     '地图：',
-    '- 西岛（A 起点）：旗门在西岛西南角；蓝色机关 plate_blue 在西岛中部。',
-    '- 东岛（B 起点）：隔着 4 米宽的缺口，与西岛相望。',
+    `- 西岛（${PLAYER_NAME} 起点）：旗门在西岛西南角；蓝色机关 plate_blue 在西岛中部。`,
+    `- 东岛（${COMPANION_NAME} 起点）：隔着 4 米宽的缺口，与西岛相望。`,
     '- 桥 bridge_1 只在蓝色机关被踩住时展开。',
-    '关系：A 踩住机关，桥才会出现；B 必须在桥展开时过桥。A 离开机关，桥会收起。',
+    `关系：${PLAYER_NAME} 踩住机关，桥才会出现；${COMPANION_NAME} 必须在桥展开时过桥。${PLAYER_NAME} 离开机关，桥会收起。`,
   ].join('\n'),
-  hints: ['对 B 说：等我踩上蓝色机关，你再过桥。', 'A 先站上蓝色机关，等 B 走到西岛再离开。'],
+  hints: [
+    `对 ${COMPANION_NAME} 说：等我踩上蓝色机关，你再过桥。`,
+    `${PLAYER_NAME} 先站上蓝色机关，等 ${COMPANION_NAME} 走到西岛再离开。`,
+  ],
 };
 
 const levelThree: LevelDef = {
   id: 'sky-03',
   name: '红地板',
-  summary: 'B 要替你开门，也要躲开会喷发的红地板。',
+  summary: `${COMPANION_NAME} 要替你开门，也要躲开会喷发的红地板。`,
   goal: '两个人都到达东侧的旗门。',
   spawns: {
     a: { x: 2, y: 0.02, z: 4 },
@@ -233,7 +237,7 @@ const levelThree: LevelDef = {
     {
       id: 'east_side',
       label: '东侧',
-      aliases: ['B 那一侧', '出口那侧'],
+      aliases: [`${COMPANION_NAME} 那一侧`, '出口那侧'],
       at: { x: 14, y: 0, z: 4 },
     },
   ],
@@ -247,17 +251,17 @@ const levelThree: LevelDef = {
   ],
   briefing: [
     '地图：',
-    '- 这是一整块长岛，西边是 A 起点，东边是 B 起点。',
-    '- 闸门 gate_1 横在中间，挡住 A 去东侧旗门的路。',
+    `- 这是一整块长岛，西边是 ${PLAYER_NAME} 起点，东边是 ${COMPANION_NAME} 起点。`,
+    `- 闸门 gate_1 横在中间，挡住 ${PLAYER_NAME} 去东侧旗门的路。`,
     '- 红色机关 plate_red 在东侧红地板 hazard_1 中间；踩住它，闸门才会打开。',
     '- 红地板会循环：预警、喷发、安全。喷发时站在上面会被送回安全点。',
     '- 安全垫 safe_pad 在红地板东南侧，不在危险范围内。',
-    '关系：B 踩住红色机关，A 才能穿过闸门；B 离开机关，闸门会关闭。',
+    `关系：${COMPANION_NAME} 踩住红色机关，${PLAYER_NAME} 才能穿过闸门；${COMPANION_NAME} 离开机关，闸门会关闭。`,
   ].join('\n'),
   hints: [
-    '对 B 说：站到红色机关上，等我穿过闸门。',
-    '红地板预警时，让 B 跳到安全垫；等它安全了再让它回去。',
-    'A 穿过闸门后，就可以让 B 离开机关，一起到旗门。',
+    `对 ${COMPANION_NAME} 说：站到红色机关上，等我穿过闸门。`,
+    `红地板预警时，让 ${COMPANION_NAME} 跳到安全垫；等它安全了再让它回去。`,
+    `${PLAYER_NAME} 穿过闸门后，就可以让 ${COMPANION_NAME} 离开机关，一起到旗门。`,
   ],
 };
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, ChevronLeft, Info, Map, Play, Settings } from 'lucide-react';
-import { levels } from '@listen-up/sim';
+import { COMPANION_NAME, levels, PLAYER_NAME } from '@listen-up/sim';
 import { copy } from './copy';
 import type { AppSettings } from './app/settings';
 import { hasModel, loadProgress, loadSettings, saveProgress, saveSettings } from './app/settings';
@@ -101,7 +101,7 @@ export function App() {
               <div>
                 <h1 className="page-title">天空浮岛</h1>
                 <p className="muted" style={{ margin: '4px 0 0' }}>
-                  每一关都让 A 和 B 必须互相配合才能到达旗门。
+                  每一关都让 {PLAYER_NAME} 和 {COMPANION_NAME} 必须互相配合才能到达旗门。
                 </p>
               </div>
               <div className="row">
@@ -165,7 +165,7 @@ export function App() {
             </div>
 
             <p className="muted" style={{ marginTop: 22, fontSize: 14, lineHeight: 1.6 }}>
-              B
+              {COMPANION_NAME}{' '}
               会自己找路、等待、推箱和操作机关。你的任务是用自然语言说清目标、条件、规则和协作意图。
             </p>
           </div>

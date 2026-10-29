@@ -1,4 +1,4 @@
-import { getLevel, levels, World } from '@listen-up/sim';
+import { COMPANION_NAME, getLevel, levels, PLAYER_NAME, World } from '@listen-up/sim';
 
 function parseLevel(): string | undefined {
   const index = process.argv.indexOf('--level');
@@ -48,14 +48,14 @@ async function exercise(id: string): Promise<void> {
     world.a.pos = { x: 4.5, y: 0.02, z: 3.5 };
     for (let index = 0; index < 20; index += 1) world.step(1 / 60);
     const bridge = world.getSnapshot().props.find((prop) => prop.id === 'bridge_1');
-    console.log('  A 站机关后桥:', bridge?.open);
+    console.log(`  ${PLAYER_NAME} 站机关后桥:`, bridge?.open);
     await stepUntil(world, world.startAction({ kind: 'move', target: 'exit' }), 1200);
-    console.log('  B 位置:', world.b.pos);
+    console.log(`  ${COMPANION_NAME} 位置:`, world.b.pos);
   } else {
     await stepUntil(world, world.startAction({ kind: 'move', target: 'plate_red' }));
     for (let index = 0; index < 10; index += 1) world.step(1 / 60);
     const gate = world.getSnapshot().props.find((prop) => prop.id === 'gate_1');
-    console.log('  B 踩住机关后闸门:', gate?.open);
+    console.log(`  ${COMPANION_NAME} 踩住机关后闸门:`, gate?.open);
     const events = [];
     for (let index = 0; index < 900; index += 1) {
       world.step(1 / 60);
@@ -68,7 +68,7 @@ async function exercise(id: string): Promise<void> {
         .map((event) => event.kind)
         .join(', '),
     );
-    console.log('  B 最终位置:', world.b.pos);
+    console.log(`  ${COMPANION_NAME} 最终位置:`, world.b.pos);
   }
 }
 

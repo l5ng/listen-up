@@ -1,4 +1,5 @@
 import type { AnchorSnapshot, LevelDef, Vec3, WorldSnapshot } from '@listen-up/sim';
+import { COMPANION_NAME, PLAYER_NAME } from '@listen-up/sim';
 import type { ObservationOptions } from './types';
 
 function fmt(value: number): string {
@@ -37,9 +38,11 @@ export function formatObservation(
   const bPlace = describePlace(snapshot.b.pos, snapshot.anchors);
   const aPlace = describePlace(snapshot.a.pos, snapshot.anchors);
   lines.push(
-    `你（B）：在${bPlace}，${snapshot.b.grounded ? '站立' : '空中'}${options.bStatus ? `，${options.bStatus}` : ''}。`,
+    `你（${COMPANION_NAME}）：在${bPlace}，${snapshot.b.grounded ? '站立' : '空中'}${options.bStatus ? `，${options.bStatus}` : ''}。`,
   );
-  lines.push(`A（玩家）：在${aPlace}，距你 ${fmt(distance(snapshot.a.pos, snapshot.b.pos))} 米。`);
+  lines.push(
+    `${PLAYER_NAME}（玩家）：在${aPlace}，距你 ${fmt(distance(snapshot.a.pos, snapshot.b.pos))} 米。`,
+  );
   lines.push(`目标：${level.goal}`);
 
   const mechanisms: string[] = [];
@@ -93,6 +96,6 @@ export function formatSituation(
   if (options.worldEvent) parts.push(`[世界事件]\n${options.worldEvent}`);
   parts.push(`[当前场景]\n${formatObservation(snapshot, level, { bStatus: options.bStatus })}`);
   parts.push(`[长期规则]\n${rulesText}`);
-  if (options.playerText) parts.push(`[A 说]\n${options.playerText}`);
+  if (options.playerText) parts.push(`[${PLAYER_NAME} 说]\n${options.playerText}`);
   return parts.join('\n\n');
 }

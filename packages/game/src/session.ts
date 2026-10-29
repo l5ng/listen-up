@@ -1,7 +1,7 @@
 import type { AgentEvent, LlmClient } from '@listen-up/agent';
 import { LlmError } from '@listen-up/agent';
 import type { LevelDef, WorldEvent, WorldSnapshot } from '@listen-up/sim';
-import { World } from '@listen-up/sim';
+import { COMPANION_NAME, PLAYER_NAME, World } from '@listen-up/sim';
 import type { AgentErrorInfo, GameUiState, StandingRule, ToolTrace } from './types';
 import { RuleStore } from './rules';
 import { formatSituation } from './observation';
@@ -133,7 +133,7 @@ export class GameSession {
     if (!rule) return;
     this.rules.remove(id);
     this.setUi({ rules: this.rules.list() });
-    this.worldNotes.push(`A 撤销了长期规则：${rule.text}`);
+    this.worldNotes.push(`${PLAYER_NAME} 撤销了长期规则：${rule.text}`);
   }
 
   tick(deltaSeconds: number): void {
@@ -209,7 +209,7 @@ export class GameSession {
           const result = await this.runtime.runTurn(situation, controller.signal);
           if (!controller.signal.aborted && result.stopped === 'max-steps') {
             this.handleError({
-              message: 'B 想得有点久，先停下来了。可以再给一条更具体的指令。',
+              message: `${COMPANION_NAME} 想得有点久，先停下来了。可以再给一条更具体的指令。`,
               code: 'max-steps',
             });
           }
@@ -249,7 +249,7 @@ export class GameSession {
         if (!this.assistantTraceId) {
           this.assistantTraceId = this.addTrace({
             kind: 'assistant',
-            title: 'B 说',
+            title: `${COMPANION_NAME} 说`,
             text: event.text,
             status: 'running',
             at: this.now(),
@@ -348,7 +348,7 @@ export class GameSession {
       if (event.kind === 'hazard_hit_b') {
         this.addTrace({
           kind: 'event',
-          title: 'B 被击中',
+          title: `${COMPANION_NAME} 被击中`,
           text: event.text,
           status: 'error',
           at: this.now(),

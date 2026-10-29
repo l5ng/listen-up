@@ -24,6 +24,7 @@ import type {
   WorldSnapshot,
 } from './types';
 import { ActionError } from './types';
+import { COMPANION_NAME, PLAYER_NAME } from './names';
 import { NavGrid } from './nav';
 
 const GRAVITY = 18;
@@ -662,13 +663,13 @@ export class World {
         const wasB = char.id === 'b';
         this.respawnCharacter(
           char,
-          `${hazard.label}喷发，${char.id === 'a' ? 'A' : 'B'}回到了安全位置。`,
+          `${hazard.label}喷发，${char.id === 'a' ? PLAYER_NAME : COMPANION_NAME}回到了安全位置。`,
         );
         this.emit({
           kind: wasB ? 'hazard_hit_b' : 'hazard_hit_a',
           id: hazard.id,
           label: hazard.label,
-          text: `${char.id === 'a' ? 'A' : 'B'}被${hazard.label}击中，回到了安全位置。`,
+          text: `${char.id === 'a' ? PLAYER_NAME : COMPANION_NAME}被${hazard.label}击中，回到了安全位置。`,
           at: this.time,
         });
       }
@@ -720,7 +721,7 @@ export class World {
     this.emit({
       kind: 'character_respawned',
       id: char.id,
-      text: `${char.id === 'a' ? 'A' : 'B'}回到了安全位置。`,
+      text: `${char.id === 'a' ? PLAYER_NAME : COMPANION_NAME}回到了安全位置。`,
       at: this.time,
     });
   }
@@ -768,7 +769,7 @@ export class World {
   }
 
   private anchorLabel(id: string): string {
-    if (id === 'player') return 'A';
+    if (id === 'player') return PLAYER_NAME;
     return this.anchors.get(id)?.label ?? id;
   }
 
@@ -791,7 +792,8 @@ export class World {
 
   startAction(command: BCommand, signal?: AbortSignal): Promise<ActionResult> {
     if (this.status === 'won') return Promise.reject(new ActionError('WON', '关卡已经结束。'));
-    if (this.pending) return Promise.reject(new ActionError('BUSY', 'B 正在执行另一个动作。'));
+    if (this.pending)
+      return Promise.reject(new ActionError('BUSY', `${COMPANION_NAME} 正在执行另一个动作。`));
     if (signal?.aborted) return Promise.reject(new ActionError('CANCELLED', '动作被取消了。'));
 
     return new Promise<ActionResult>((resolve, reject) => {
@@ -1013,7 +1015,7 @@ export class World {
       return false;
     }
     if (Math.abs(target.y - this.b.pos.y) > 0.65) {
-      this.failAction('NO_PATH', '前方高差太大，B 走不过去。');
+      this.failAction('NO_PATH', `前方高差太大，${COMPANION_NAME} 走不过去。`);
       return false;
     }
     const now = this.time;
@@ -1023,7 +1025,7 @@ export class World {
     } else if (now - pending.lastMoveAt > 1.3) {
       this.failAction(
         'STUCK',
-        `B 在前往${this.anchorLabel(pending.command.kind === 'move' ? pending.command.target : '')}的路上被挡住了。`,
+        `${COMPANION_NAME} 在前往${this.anchorLabel(pending.command.kind === 'move' ? pending.command.target : '')}的路上被挡住了。`,
       );
       return false;
     }

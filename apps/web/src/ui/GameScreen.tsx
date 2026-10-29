@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { GameSession } from '@listen-up/game';
 import type { LevelDef } from '@listen-up/sim';
+import { COMPANION_NAME, PLAYER_NAME } from '@listen-up/sim';
 import type { AppSettings } from '../app/settings';
 import { createClient } from '../app/settings';
 import { copy } from '../copy';
@@ -47,7 +48,7 @@ function ControlsGrid() {
   return (
     <div className="controls">
       <span>
-        <b>W A S D</b> 移动 A
+        <b>W A S D</b> 移动 {PLAYER_NAME}
       </span>
       <span>
         <b>Space</b> 跳跃
@@ -56,7 +57,7 @@ function ControlsGrid() {
         <b>E</b> 拉杆
       </span>
       <span>
-        <b>Enter</b> 对 B 说话
+        <b>Enter</b> 对 {COMPANION_NAME} 说话
       </span>
       <span>
         <b>鼠标拖动</b> 环绕镜头
@@ -65,7 +66,7 @@ function ControlsGrid() {
         <b>滚轮</b> 缩放
       </span>
       <span>
-        <b>按住 Q</b> 看 B
+        <b>按住 Q</b> 看 {COMPANION_NAME}
       </span>
       <span>
         <b>Tab</b> 行动记录
@@ -246,7 +247,7 @@ export function GameScreen({
   };
 
   const toolCount = ui.trace.filter((entry) => entry.kind === 'tool').length;
-  const example = examples[level.id] ?? '告诉 B 你想让它做什么。';
+  const example = examples[level.id] ?? `告诉 ${COMPANION_NAME} 你想让它做什么。`;
 
   return (
     <div className="game-root">
@@ -312,7 +313,7 @@ export function GameScreen({
           ) : (
             <MessageCircle size={16} />
           )}
-          <span>B</span>
+          <span>{COMPANION_NAME}</span>
           <strong>{ui.bStatus}</strong>
         </div>
 
@@ -353,7 +354,7 @@ export function GameScreen({
               }}
               rows={1}
               placeholder={copy.placeholder}
-              aria-label="告诉 B 要做什么"
+              aria-label={`告诉 ${COMPANION_NAME} 要做什么`}
               spellCheck={false}
             />
             <button
@@ -368,7 +369,7 @@ export function GameScreen({
           </div>
           <div className="input-hint">
             <span>Enter 发送 · Shift+Enter 换行</span>
-            <span>Tab 行动记录 · E 互动 · Q 看 B</span>
+            <span>Tab 行动记录 · E 互动 · Q 看 {COMPANION_NAME}</span>
           </div>
         </div>
 
@@ -412,7 +413,9 @@ export function GameScreen({
           <div className="panel">
             <h2>{level.summary}</h2>
             <div className="goal">{level.goal}</div>
-            <div className="example-line">可以这样对 B 说：“{example}”</div>
+            <div className="example-line">
+              可以这样对 {COMPANION_NAME} 说：“{example}”
+            </div>
             <ControlsGrid />
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <button className="btn ghost" type="button" onClick={() => setHintOpen(true)}>
@@ -454,7 +457,7 @@ export function GameScreen({
         <div className="overlay">
           <div className="panel">
             <h2>{copy.pause}</h2>
-            <p className="muted">B 会停在这里，等你回来。</p>
+            <p className="muted">{COMPANION_NAME} 会停在这里，等你回来。</p>
             <div className="stack">
               <button className="btn primary" type="button" onClick={() => setPaused(false)}>
                 <Play size={18} />
@@ -501,7 +504,7 @@ export function GameScreen({
               </div>
               <div className="stat">
                 <strong>{toolCount}</strong>
-                <span>B 的动作</span>
+                <span>{COMPANION_NAME} 的动作</span>
               </div>
               <div className="stat">
                 <strong>{ui.promptTokens + ui.completionTokens}</strong>

@@ -1,4 +1,4 @@
-import { ActionError, World } from '@listen-up/sim';
+import { ActionError, PLAYER_NAME, World } from '@listen-up/sim';
 import type { BCommand, LevelDef, WaitCondition, WorldSnapshot } from '@listen-up/sim';
 import type { ToolCall, ToolDefinition, ToolExecution } from '@listen-up/agent';
 import type { RuleStore } from './rules';
@@ -36,7 +36,7 @@ function crateList(level: LevelDef): string[] {
 }
 
 function labelOf(level: LevelDef, id: string): string {
-  if (id === 'player') return 'A 附近';
+  if (id === 'player') return `${PLAYER_NAME} 附近`;
   const prop = level.props.find((entry) => entry.id === id);
   if (prop) return prop.label;
   const zone = level.zones.find((entry) => entry.id === id);
@@ -118,7 +118,7 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
           target: {
             type: 'string',
             enum: moveTargets,
-            description: '目标锚点 id；player 表示 A 附近。',
+            description: `目标锚点 id；player 表示 ${PLAYER_NAME} 附近。`,
           },
         },
         required: ['target'],
@@ -137,7 +137,7 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
     },
     {
       name: 'push_box',
-      description: '把木箱朝目标方向推。可以推下边缘；to 用锚点，player 表示推向 A 附近。',
+      description: `把木箱朝目标方向推。可以推下边缘；to 用锚点，player 表示推向 ${PLAYER_NAME} 附近。`,
       parameters: {
         type: 'object',
         properties: {
@@ -160,7 +160,7 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
     },
     {
       name: 'wait_until',
-      description: '等到一个机器可判定的条件成立。适合“等 A 站上机关”“等门打开”“等红地板预警”。',
+      description: `等到一个机器可判定的条件成立。适合“等 ${PLAYER_NAME} 站上机关”“等门打开”“等红地板预警”。`,
       parameters: {
         type: 'object',
         properties: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { World, getLevel } from '@listen-up/sim';
+import { COMPANION_NAME, World, getLevel } from '@listen-up/sim';
 import { RuleStore } from './rules';
 import { ToolExecutor } from './tools';
 import { formatObservation } from './observation';
@@ -12,7 +12,7 @@ describe('game tools and observation', () => {
     expect(text).toContain('木箱');
     expect(text).toContain('crate_1');
     expect(text).toContain('旗门');
-    expect(text).toContain('你（B）');
+    expect(text).toContain(`你（${COMPANION_NAME}）`);
   });
 
   it('remembers and forgets a rule through the tool surface', async () => {

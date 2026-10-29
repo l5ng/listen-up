@@ -18,7 +18,7 @@ function call(name: string, args: string, id: string): unknown {
   };
 }
 
-test('hazard warning interrupts B and sends it to the safe pad', async ({ page }) => {
+test('hazard warning interrupts Echo and sends it to the safe pad', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
 
@@ -100,7 +100,7 @@ test('hazard warning interrupts B and sends it to the safe pad', async ({ page }
   await page.getByRole('button', { name: '关卡' }).click();
   await page.getByRole('button', { name: '进入关卡' }).nth(2).click();
   await page.getByRole('button', { name: '开始', exact: true }).click();
-  const input = page.getByRole('textbox', { name: '告诉 B 要做什么' });
+  const input = page.getByRole('textbox', { name: '告诉 Echo 要做什么' });
   await input.fill('站到红色机关上，等我穿过闸门。');
   await input.press('Enter');
 

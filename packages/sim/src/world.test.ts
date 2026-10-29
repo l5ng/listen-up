@@ -26,7 +26,7 @@ async function advance(
 }
 
 describe('world', () => {
-  it('lets B push the crate off the ledge into the yard', async () => {
+  it('lets Echo push the crate off the ledge into the yard', async () => {
     const world = new World(getLevel('sky-01'));
     const result = await advance(
       world,
@@ -38,7 +38,7 @@ describe('world', () => {
     expect(crate?.pos.z).toBeCloseTo(6.6, 1);
   });
 
-  it('requires A on the plate before B can cross the bridge', async () => {
+  it('requires Dash on the plate before Echo can cross the bridge', async () => {
     const world = new World(getLevel('sky-02'));
     await expect(world.startAction({ kind: 'move', target: 'exit' })).rejects.toMatchObject({
       code: 'NO_PATH',
@@ -61,7 +61,7 @@ describe('world', () => {
     expect(world.b.pos.x).toBeLessThan(3);
   });
 
-  it('opens the gate while B holds the red plate and respawns B when it stays in the hazard', async () => {
+  it('opens the gate while Echo holds the red plate and respawns Echo when it stays in the hazard', async () => {
     const world = new World(getLevel('sky-03'));
     await advance(world, world.startAction({ kind: 'move', target: 'plate_red' }));
     for (let index = 0; index < 10; index += 1) world.step(1 / 60);

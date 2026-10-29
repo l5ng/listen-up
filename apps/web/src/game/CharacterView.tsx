@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import type { GameSession } from '@listen-up/game';
+import { COMPANION_NAME, PLAYER_NAME } from '@listen-up/sim';
 import { cloneCharacter, useKenney } from './models';
 
 const ANIMATION_NAMES = [
@@ -28,7 +29,7 @@ function SpeechBubble({ session }: { session: GameSession }) {
       style={{ pointerEvents: 'none' }}
     >
       <div className="speech-bubble">
-        <span className="speech-name">B</span>
+        <span className="speech-name">{COMPANION_NAME}</span>
         {ui.speech}
       </div>
     </Html>
@@ -124,7 +125,7 @@ export function CharacterView({ session, which }: CharacterViewProps) {
         zIndexRange={[4, 0]}
         style={{ pointerEvents: 'none' }}
       >
-        <span className={`name-tag ${which}`}>{which === 'a' ? 'A' : 'B'}</span>
+        <span className={`name-tag ${which}`}>{which === 'a' ? PLAYER_NAME : COMPANION_NAME}</span>
       </Html>
       {which === 'b' ? <SpeechBubble session={session} /> : null}
       {which === 'b' && ui.turnActive ? (
