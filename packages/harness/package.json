@@ -1,0 +1,15 @@
+{
+  "name": "@listen-up/harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@listen-up/agent": "workspace:*",
+    "@listen-up/game": "workspace:*",
+    "@listen-up/sim": "workspace:*"
+  }
+}

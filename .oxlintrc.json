@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "unicorn", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    "react/set-state-in-effect": "off",
+    "eslint/no-unmodified-loop-condition": "off",
+    "import/no-unassigned-import": "off",
+    "unicorn/require-module-specifiers": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "eslint/no-await-in-loop": "off"
+  },
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "apps/web/public/models",
+    "coverage",
+    "playwright-report",
+    "test-results"
+  ]
+}
