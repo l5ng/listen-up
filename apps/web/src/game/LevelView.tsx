@@ -1,18 +1,8 @@
 import { memo, useMemo } from 'react';
 import type { Object3D } from 'three';
 import type { BlockSpec, DecorSpec, LevelDef } from '@listen-up/sim';
+import { decorHeights } from './decor';
 import { cloneStatic, useKenney, useStaticModel } from './models';
-
-const decorHeights: Record<string, number> = {
-  tree: 2.35,
-  'tree-pine': 2.5,
-  flowers: 0.3,
-  mushrooms: 0.4,
-  sign: 0.8,
-  rocks: 0.55,
-  grass: 0.28,
-  'fence-straight': 0.8,
-};
 
 const Block = memo(function Block({ source, block }: { source: Object3D; block: BlockSpec }) {
   const model = useStaticModel(source, 1);

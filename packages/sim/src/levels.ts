@@ -86,7 +86,8 @@ const levelOne: LevelDef = {
     { id: 'bridge_edge', label: '桥边', aliases: ['桥头'], at: { x: 7, y: 2, z: 7.5 } },
     { id: 'crate_landing', label: '木箱落点', aliases: ['箱子下面'], at: { x: 6, y: 0, z: 6.5 } },
   ],
-  cameraYaw: 0.5,
+  // 从西侧看向高台，院子和两块高台能同时落在画面里。
+  cameraYaw: 4.75,
   decor: [
     decor('tree_a', 'tree', { x: 1.2, y: 0, z: 1.2 }, 1.1),
     decor('tree_b', 'tree-pine', { x: 6.8, y: 2, z: 5.7 }, 0.9),

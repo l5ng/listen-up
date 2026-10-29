@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { GameSession } from '@listen-up/game';
 import type { InputState } from './input';
+import { OVERVIEW_PITCH, createOverviewFrame, fitCameraDistance } from './overview';
 
 interface CameraRigProps {
   session: GameSession;
@@ -10,42 +11,33 @@ interface CameraRigProps {
   reduceMotion: boolean;
 }
 
+const FOLLOW_XZ = 0.1;
+const FOLLOW_Y = 0.16;
+const MIN_PITCH = 0.32;
+const MAX_PITCH = 1.28;
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 1.35;
+const FOCUS_ZOOM = 0.5;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 export function CameraRig({ session, input, reduceMotion }: CameraRigProps) {
-  const { camera, gl } = useThree();
-  const framing = useMemo(() => {
-    let minX = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    let minZ = Number.POSITIVE_INFINITY;
-    let maxZ = Number.NEGATIVE_INFINITY;
-    for (const block of session.level.blocks) {
-      minX = Math.min(minX, block.at.x);
-      maxX = Math.max(maxX, block.at.x + block.size.x);
-      minY = Math.min(minY, block.at.y);
-      maxY = Math.max(maxY, block.at.y + block.size.y);
-      minZ = Math.min(minZ, block.at.z);
-      maxZ = Math.max(maxZ, block.at.z + block.size.z);
-    }
-    const valid = Number.isFinite(minX);
-    return {
-      center: new THREE.Vector3(
-        valid ? (minX + maxX) / 2 : 0,
-        valid ? (minY + maxY) / 2 + 1 : 1.5,
-        valid ? (minZ + maxZ) / 2 : 0,
-      ),
-      span: valid ? Math.max(maxX - minX, maxZ - minZ) : 12,
-    };
-  }, [session.level.blocks]);
+  const { camera, gl, size } = useThree();
+  const framing = useMemo(() => createOverviewFrame(session.level), [session.level]);
 
-  const cameraState = useRef({ yaw: session.level.cameraYaw ?? 0.5, pitch: 0.55, distance: 11 });
-  const target = useRef(framing.center.clone());
+  const cameraState = useRef({
+    yaw: session.level.cameraYaw ?? 0.5,
+    pitch: OVERVIEW_PITCH,
+    zoom: 1,
+  });
+  const target = useRef(framing.target.clone());
   const desired = useRef(new THREE.Vector3());
   const offset = useRef(new THREE.Vector3());
+  const wanted = useRef(new THREE.Vector3());
+  const fitted = useRef({ key: '', distance: 0 });
+  const initialized = useRef(false);
 
   useEffect(() => {
     if (import.meta.env.DEV) window.listenupCamera = camera;
@@ -65,8 +57,8 @@ export function CameraRig({ session, input, reduceMotion }: CameraRigProps) {
       cameraState.current.yaw -= (event.clientX - lastX) * 0.005;
       cameraState.current.pitch = clamp(
         cameraState.current.pitch + (event.clientY - lastY) * 0.0035,
-        0.16,
-        1.02,
+        MIN_PITCH,
+        MAX_PITCH,
       );
       lastX = event.clientX;
       lastY = event.clientY;
@@ -76,10 +68,10 @@ export function CameraRig({ session, input, reduceMotion }: CameraRigProps) {
     };
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      cameraState.current.distance = clamp(
-        cameraState.current.distance + event.deltaY * 0.008,
-        6.5,
-        18,
+      cameraState.current.zoom = clamp(
+        cameraState.current.zoom + event.deltaY * 0.0007,
+        MIN_ZOOM,
+        MAX_ZOOM,
       );
     };
 
@@ -108,19 +100,33 @@ export function CameraRig({ session, input, reduceMotion }: CameraRigProps) {
       desired.current.set(b.x, b.y + 1.2, b.z);
     } else {
       desired.current.set(
-        framing.center.x + (a.x - framing.center.x) * 0.16 + (b.x - framing.center.x) * 0.16,
-        Math.max(framing.center.y, Math.max(a.y, b.y) + 1.0),
-        framing.center.z + (a.z - framing.center.z) * 0.16 + (b.z - framing.center.z) * 0.16,
+        framing.target.x + ((a.x + b.x) / 2 - framing.target.x) * FOLLOW_XZ,
+        framing.target.y + ((a.y + b.y) / 2 - framing.target.y) * FOLLOW_Y,
+        framing.target.z + ((a.z + b.z) / 2 - framing.target.z) * FOLLOW_XZ,
       );
     }
 
     const smoothing = reduceMotion ? 1 - Math.exp(-delta * 12) : 1 - Math.exp(-delta * 5);
     target.current.lerp(desired.current, smoothing);
 
-    const distance =
-      clamp(framing.span * 1.16, 12.5, 22) *
-      (cameraState.current.distance / 11) *
-      (focusB ? 0.72 : 1);
+    const aspect = size.width / Math.max(size.height, 1);
+    const fov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 45;
+    const key = `${cameraState.current.yaw.toFixed(3)}:${cameraState.current.pitch.toFixed(3)}:${aspect.toFixed(3)}`;
+    if (fitted.current.key !== key) {
+      fitted.current = {
+        key,
+        distance: fitCameraDistance(
+          framing.points,
+          framing.target,
+          cameraState.current.yaw,
+          cameraState.current.pitch,
+          fov,
+          aspect,
+        ),
+      };
+    }
+
+    const distance = fitted.current.distance * cameraState.current.zoom * (focusB ? FOCUS_ZOOM : 1);
     const pitch = cameraState.current.pitch;
     offset.current
       .set(
@@ -130,8 +136,13 @@ export function CameraRig({ session, input, reduceMotion }: CameraRigProps) {
       )
       .multiplyScalar(distance);
 
-    const wanted = desired.current.copy(target.current).add(offset.current);
-    camera.position.lerp(wanted, 1 - Math.exp(-delta * 7));
+    wanted.current.copy(target.current).add(offset.current);
+    if (!initialized.current) {
+      camera.position.copy(wanted.current);
+      initialized.current = true;
+    } else {
+      camera.position.lerp(wanted.current, 1 - Math.exp(-delta * 7));
+    }
     camera.lookAt(target.current);
   });
 
