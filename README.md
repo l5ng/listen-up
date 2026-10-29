@@ -23,7 +23,7 @@ pnpm install
 pnpm dev
 ```
 
-打开 http://127.0.0.1:5173 。首次进入可以先点“试一句”看 30 秒演示，不需要 key；要玩完整关卡，再到“连接模型”里填一个支持 OpenAI Chat Completions 与 tool calling 的接口。
+打开 http://127.0.0.1:5173 。首次进入可以先点“试一句”看 30 秒演示，不需要 key；要玩完整关卡，再到“连接模型”里填一个支持 Chat Completions 或 Responses、并且支持 tool calling 的接口。
 
 ```sh
 pnpm build      # 静态产物在 apps/web/dist
@@ -35,10 +35,18 @@ pnpm test:e2e   # Playwright 烟雾测试
 
 ![连接 Echo 的大脑](docs/screenshots/connect.jpg)
 
-- 只支持 OpenAI 格式的 `POST {baseUrl}/chat/completions`，使用 `stream: true` 和 `tools`。
-- Base URL、API Key、模型名、Temperature 都在游戏内设置；模型必须支持 function calling。
+- 支持两种接口，二选一：
+
+  | 接口             | 请求                              | 默认             |
+  | ---------------- | --------------------------------- | ---------------- |
+  | Chat Completions | `POST {baseUrl}/chat/completions` | DeepSeek、Ollama |
+  | Responses        | `POST {baseUrl}/responses`        | OpenAI           |
+
+- 两种接口都使用 `stream: true` 和 function tools；模型必须支持 tool calling。
+- Base URL 可以填到 `/v1`，也可以直接贴完整的 `/v1/chat/completions` 或 `/v1/responses`。在“设置 → 自定义接口与高级设置 → 接口类型”里切换；OpenAI 预设默认走 Responses。
+- Responses 模式固定 `store: false`，不让 OpenAI 保存可检索的 response；服务商自身的安全日志仍以其政策为准。为了支持无状态工具循环，当前轮的加密 reasoning 会随下一次请求带回，更早轮次只保留文字对话。
 - API Key 只保存在本机 localStorage，只会发往你填写的接口地址；没有遥测和后端。
-- 浏览器直连受服务商 CORS 策略影响。如果接口不允许跨域，游戏会显示连接错误；本项目按约定不内置代理。
+- 浏览器直连受服务商 CORS 策略影响。如果接口不允许跨域，游戏会显示连接错误；本项目按约定不内置代理。OpenAI 的 `/v1/responses` 预检已验证允许浏览器直连。
 - 本地 Ollama 可以把 `OLLAMA_ORIGINS` 设为允许的页面来源；OpenAI、DeepSeek 等端点是否能从浏览器直连取决于其 CORS 配置。
 
 ## 操作
@@ -73,7 +81,7 @@ pnpm test:e2e   # Playwright 烟雾测试
 ```text
 apps/web/          React + R3F 客户端、HUD、设置、对白、轨迹抽屉
 packages/sim/      确定性 World、AABB 角色控制、导航、机关、关卡
-packages/agent/    OpenAI 兼容流式客户端、agent loop、工具协议
+packages/agent/    Chat Completions 与 Responses 流式客户端、agent loop、工具协议
 packages/game/     工具执行器、观察格式化、提示词、GameSession
 packages/harness/  预留给无头场景 / 真实模型 eval
 apps/web/e2e/      Playwright 烟雾测试
@@ -94,6 +102,7 @@ apps/web/e2e/      Playwright 烟雾测试
 - 没有后端、账号、云存档或代理；密钥和进度都在本机。
 - 没有音频、关卡编辑器、怪物或钥匙搬运。
 - 真实模型的规划质量取决于模型和接口；失败会以工具结果回到模型，重复失败会停下来让玩家介入。
+- Responses 模式只覆盖 OpenAI 的 HTTP/SSE 与 function tools，不支持 WebSocket、内置工具或 `previous_response_id`。
 - 代码许可证暂未指定。
 
 ## 素材与许可

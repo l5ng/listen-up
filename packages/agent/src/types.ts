@@ -6,12 +6,16 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+export type ProviderItem = Record<string, unknown>;
+
 export interface ChatMessage {
   role: ChatRole;
   content: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
+  /** Protocol-specific context that must ride along to the next request. */
+  providerItems?: ProviderItem[];
 }
 
 export interface ToolDefinition {
@@ -38,6 +42,7 @@ export type LlmDelta =
   | { type: 'content'; text: string }
   | { type: 'reasoning'; text: string }
   | { type: 'tool_call'; index: number; id?: string; name?: string; argumentsDelta?: string }
+  | { type: 'provider_items'; items: ProviderItem[] }
   | { type: 'finish'; reason: string }
   | { type: 'usage'; usage: Usage };
 

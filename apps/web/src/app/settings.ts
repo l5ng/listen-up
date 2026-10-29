@@ -1,10 +1,13 @@
-import { OpenAiCompatibleClient } from '@listen-up/agent';
+import { OpenAiCompatibleClient, OpenAiResponsesClient } from '@listen-up/agent';
+
+export type ProviderProtocol = 'chat' | 'responses';
 
 export interface ProviderSettings {
   baseUrl: string;
   apiKey: string;
   model: string;
   temperature: number;
+  protocol: ProviderProtocol;
 }
 
 export interface AppSettings {
@@ -22,6 +25,7 @@ export const defaultSettings: AppSettings = {
     apiKey: '',
     model: '',
     temperature: 0.4,
+    protocol: 'chat',
   },
   inputPausesWorld: false,
   reduceMotion: false,
@@ -35,6 +39,7 @@ export const providerPresets = [
     model: 'deepseek-chat',
     keyUrl: 'https://platform.deepseek.com/api_keys',
     note: '便宜，支持工具调用',
+    protocol: 'chat',
     recommended: true,
   },
   {
@@ -44,6 +49,7 @@ export const providerPresets = [
     model: 'gpt-4o-mini',
     keyUrl: 'https://platform.openai.com/api-keys',
     note: '已经有 OpenAI 账号',
+    protocol: 'responses',
     recommended: false,
   },
   {
@@ -53,6 +59,7 @@ export const providerPresets = [
     model: 'qwen3:8b',
     keyUrl: 'https://ollama.com/download',
     note: '免费，本地运行',
+    protocol: 'chat',
     recommended: false,
   },
 ] as const;
@@ -80,6 +87,7 @@ export function loadSettings(): AppSettings {
           typeof provider.temperature === 'number'
             ? provider.temperature
             : defaultSettings.provider.temperature,
+        protocol: provider.protocol === 'responses' ? 'responses' : 'chat',
       },
       inputPausesWorld: parsed.inputPausesWorld === true,
       reduceMotion: parsed.reduceMotion === true,
@@ -101,14 +109,19 @@ export function hasModel(settings: AppSettings): boolean {
   return settings.provider.baseUrl.trim().length > 0 && settings.provider.model.trim().length > 0;
 }
 
-export function createClient(settings: AppSettings): OpenAiCompatibleClient {
+export function createClient(
+  settings: AppSettings,
+): OpenAiCompatibleClient | OpenAiResponsesClient {
   const provider = settings.provider;
-  return new OpenAiCompatibleClient({
+  const config = {
     baseUrl: provider.baseUrl,
     apiKey: provider.apiKey,
     model: provider.model,
     temperature: provider.temperature,
-  });
+  };
+  return provider.protocol === 'responses'
+    ? new OpenAiResponsesClient(config)
+    : new OpenAiCompatibleClient(config);
 }
 
 export interface Progress {

@@ -431,6 +431,37 @@ textarea:focus-visible,
   color: var(--ink-soft);
 }
 
+.field-label {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.protocol-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.protocol-option {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.protocol-option:hover {
+  background: #fff3c4;
+}
+
+.protocol-option[aria-pressed='true'] {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px rgba(255, 200, 87, 0.55);
+}
+
 .preset-row {
   display: flex;
   flex-wrap: wrap;

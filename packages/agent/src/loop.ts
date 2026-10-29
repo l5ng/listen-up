@@ -3,6 +3,7 @@ import type {
   AgentTurnResult,
   ChatMessage,
   LlmClient,
+  ProviderItem,
   ToolCall,
   ToolDefinition,
   ToolExecution,
@@ -29,6 +30,7 @@ interface AssembledStep {
   reasoning: string;
   calls: ToolCall[];
   finishReason: string;
+  providerItems: ProviderItem[];
   usage?: Usage;
 }
 
@@ -78,6 +80,7 @@ async function collectStep(
   let content = '';
   let reasoning = '';
   let finishReason = '';
+  let providerItems: ProviderItem[] = [];
   let received = false;
 
   const consume = async (): Promise<AssembledStep> => {
@@ -104,6 +107,8 @@ async function collectStep(
         if (delta.name) partial.name = delta.name;
         if (delta.argumentsDelta) partial.args += delta.argumentsDelta;
         partials.set(delta.index, partial);
+      } else if (delta.type === 'provider_items') {
+        providerItems = delta.items;
       } else if (delta.type === 'finish') {
         finishReason = delta.reason;
       } else if (delta.type === 'usage') {
@@ -119,7 +124,7 @@ async function collectStep(
         type: 'function',
         function: { name: partial.name, arguments: partial.args || '{}' },
       }));
-    return { content, reasoning, calls, finishReason };
+    return { content, reasoning, calls, finishReason, providerItems };
   };
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -171,6 +176,7 @@ export async function runAgentTurn(options: RunAgentTurnOptions): Promise<AgentT
       role: 'assistant',
       content: assembled.content.length > 0 ? assembled.content : null,
       ...(calls.length > 0 ? { tool_calls: calls } : {}),
+      ...(assembled.providerItems.length > 0 ? { providerItems: assembled.providerItems } : {}),
     };
     options.messages.push(assistant);
     emit(options.onEvent, { type: 'assistant_done', text });

@@ -87,6 +87,7 @@ export function SettingsModal({
         ...current.provider,
         baseUrl: preset.baseUrl,
         model: preset.model,
+        protocol: preset.protocol,
       },
     }));
     setTestResult(undefined);
@@ -175,11 +176,7 @@ export function SettingsModal({
           <div className="row spread">
             <div>
               <h2 id="settings-title">{connectView ? copy.connectTitle : copy.settings}</h2>
-              <div className="muted">
-                {connectView
-                  ? copy.connectLead
-                  : '只支持 OpenAI Chat Completions 格式，模型需要支持 tool calling。'}
-              </div>
+              <div className="muted">{connectView ? copy.connectLead : copy.settingsLead}</div>
             </div>
             <button className="btn icon-only ghost" onClick={onClose} aria-label={copy.close}>
               <X size={20} />
@@ -317,6 +314,32 @@ export function SettingsModal({
 
           <details className="connect-advanced">
             <summary>{copy.connectAdvanced}</summary>
+            <div className="field">
+              <span className="field-label" id="protocol-label">
+                {copy.apiSection}
+              </span>
+              <div className="protocol-switch" role="group" aria-labelledby="protocol-label">
+                <button
+                  className="protocol-option"
+                  type="button"
+                  aria-pressed={draft.provider.protocol === 'chat'}
+                  onClick={() => updateProvider({ protocol: 'chat' })}
+                >
+                  {copy.apiChat}
+                </button>
+                <button
+                  className="protocol-option"
+                  type="button"
+                  aria-pressed={draft.provider.protocol === 'responses'}
+                  onClick={() => updateProvider({ protocol: 'responses' })}
+                >
+                  {copy.apiResponses}
+                </button>
+              </div>
+              <span className="hint">
+                {draft.provider.protocol === 'responses' ? copy.apiResponsesHint : copy.apiChatHint}
+              </span>
+            </div>
             <div className="field">
               <label htmlFor="base-url">接口地址（Base URL）</label>
               <input

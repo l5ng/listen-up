@@ -86,6 +86,31 @@ describe('runAgentTurn', () => {
     expect(toolResults[1]?.content).toContain('打断');
   });
 
+  it('attaches provider items to the assistant message', async () => {
+    const providerItems = [
+      { type: 'reasoning', id: 'rs_1', summary: [] },
+      { role: 'assistant', content: '我去推箱子。' },
+    ];
+    const client = new FakeClient([
+      [
+        { type: 'provider_items', items: providerItems },
+        { type: 'content', text: '我去推箱子。' },
+        { type: 'finish', reason: 'stop' },
+      ],
+    ]);
+    const messages: ChatMessage[] = [{ role: 'system', content: 'system' }];
+    await runAgentTurn({
+      client,
+      model: 'fake',
+      messages,
+      tools: [],
+      signal: new AbortController().signal,
+      executeTool: async () => ({ ok: true, summary: 'ok', content: '{"ok":true}' }),
+    });
+    expect(messages.at(-1)?.role).toBe('assistant');
+    expect(messages.at(-1)?.providerItems).toEqual(providerItems);
+  });
+
   it('stops at the configured step limit', async () => {
     const scripts = Array.from({ length: 4 }, () => [
       toolCall('observe', '{}'),

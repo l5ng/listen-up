@@ -1,3 +1,4 @@
+import { endpoint, headers, listModelIds, readError, readSseData } from './http';
 import type { ChatMessage, LlmClient, LlmDelta, LlmRequest, ToolCall, Usage } from './types';
 import { LlmError } from './types';
 
@@ -8,23 +9,6 @@ export interface OpenAiCompatibleConfig {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
-
-function endpoint(baseUrl: string, path: string): string {
-  const base = normalizeBaseUrl(baseUrl);
-  if (base.endsWith('/chat/completions')) return base;
-  if (base.endsWith('/v1')) return `${base}${path}`;
-  return `${base}/v1${path}`;
-}
-
-function headers(apiKey: string): Record<string, string> {
-  const value: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (apiKey.trim()) value.Authorization = `Bearer ${apiKey.trim()}`;
-  return value;
 }
 
 function number(value: unknown): number | undefined {
@@ -46,35 +30,6 @@ function parseUsage(raw: unknown): Usage | undefined {
   )
     return undefined;
   return usage;
-}
-
-async function readError(response: Response): Promise<{ message: string; code: string }> {
-  let detail = '';
-  try {
-    const text = await response.text();
-    detail = text.slice(0, 800);
-  } catch {
-    detail = '';
-  }
-  let message = detail;
-  try {
-    const parsed = JSON.parse(detail) as { error?: { message?: string } };
-    if (parsed.error?.message) message = parsed.error.message;
-  } catch {
-    // keep raw detail
-  }
-  const code =
-    response.status === 401 || response.status === 403
-      ? 'auth'
-      : response.status === 429
-        ? 'rate-limit'
-        : response.status >= 500
-          ? 'server'
-          : 'http';
-  return {
-    message: message || `模型接口返回 HTTP ${response.status}`,
-    code,
-  };
 }
 
 function toolCallFromDelta(raw: unknown, index: number): Extract<LlmDelta, { type: 'tool_call' }> {
@@ -149,22 +104,7 @@ export class OpenAiCompatibleClient implements LlmClient {
   }
 
   async listModels(signal?: AbortSignal): Promise<string[]> {
-    const response = await fetch(endpoint(this.config.baseUrl, '/models'), {
-      method: 'GET',
-      headers: headers(this.config.apiKey),
-      signal,
-    });
-    if (!response.ok) {
-      const error = await readError(response);
-      throw new LlmError(error.code, error.message, {
-        status: response.status,
-        retryable: response.status >= 500,
-      });
-    }
-    const payload = (await response.json()) as { data?: { id?: string }[] };
-    return (payload.data ?? [])
-      .map((item) => item.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    return listModelIds(this.config, signal);
   }
 
   async *stream(request: LlmRequest, signal: AbortSignal): AsyncIterable<LlmDelta> {
@@ -184,7 +124,7 @@ export class OpenAiCompatibleClient implements LlmClient {
     }));
     const body = {
       model: request.model,
-      messages: request.messages,
+      messages: toOpenAiMessages(request.messages),
       tools: wireTools.length > 0 ? wireTools : undefined,
       tool_choice: wireTools.length > 0 ? 'auto' : undefined,
       stream: true,
@@ -232,53 +172,29 @@ export class OpenAiCompatibleClient implements LlmClient {
       return;
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      clearTimeout(timer);
-      throw new LlmError('parse', '模型接口没有返回可读取的响应体。');
-    }
-    const decoder = new TextDecoder();
-    let buffer = '';
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === '[DONE]') continue;
-          let payload: Record<string, unknown>;
-          try {
-            payload = JSON.parse(data) as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-          const choices = Array.isArray(payload.choices) ? payload.choices : [];
-          const choice = (choices[0] ?? {}) as Record<string, unknown>;
-          const delta = (choice.delta ?? {}) as Record<string, unknown>;
-          const content = typeof delta.content === 'string' ? delta.content : '';
-          if (content) yield { type: 'content', text: content };
-          const reasoning =
-            typeof delta.reasoning_content === 'string'
-              ? delta.reasoning_content
-              : typeof delta.reasoning === 'string'
-                ? delta.reasoning
-                : '';
-          if (reasoning) yield { type: 'reasoning', text: reasoning };
-          const calls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
-          for (let index = 0; index < calls.length; index += 1) {
-            yield toolCallFromDelta(calls[index], index);
-          }
-          if (typeof choice.finish_reason === 'string' && choice.finish_reason) {
-            yield { type: 'finish', reason: choice.finish_reason };
-          }
-          const usage = parseUsage(payload.usage);
-          if (usage) yield { type: 'usage', usage };
+      for await (const payload of readSseData(response)) {
+        const choices = Array.isArray(payload.choices) ? payload.choices : [];
+        const choice = (choices[0] ?? {}) as Record<string, unknown>;
+        const delta = (choice.delta ?? {}) as Record<string, unknown>;
+        const content = typeof delta.content === 'string' ? delta.content : '';
+        if (content) yield { type: 'content', text: content };
+        const reasoning =
+          typeof delta.reasoning_content === 'string'
+            ? delta.reasoning_content
+            : typeof delta.reasoning === 'string'
+              ? delta.reasoning
+              : '';
+        if (reasoning) yield { type: 'reasoning', text: reasoning };
+        const calls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+        for (let index = 0; index < calls.length; index += 1) {
+          yield toolCallFromDelta(calls[index], index);
         }
+        if (typeof choice.finish_reason === 'string' && choice.finish_reason) {
+          yield { type: 'finish', reason: choice.finish_reason };
+        }
+        const usage = parseUsage(payload.usage);
+        if (usage) yield { type: 'usage', usage };
       }
     } catch (error) {
       if (signal.aborted) throw new DOMException('请求已取消。', 'AbortError');
@@ -288,22 +204,18 @@ export class OpenAiCompatibleClient implements LlmClient {
       throw new LlmError('stream', '模型流式响应中断了。', { retryable: true });
     } finally {
       clearTimeout(timer);
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore
-      }
     }
   }
 }
 
 export function toOpenAiMessages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map((message) => {
-    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
-      return { ...message, content: message.content ?? null };
-    }
-    return message;
-  });
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+    ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+    ...(message.name ? { name: message.name } : {}),
+  }));
 }
 
 export function toolCallSignature(call: ToolCall): string {

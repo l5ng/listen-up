@@ -29,7 +29,14 @@ describe('OpenAiCompatibleClient', () => {
       },
     ];
     for await (const delta of client.stream(
-      { model: 'test-model', messages: [{ role: 'user', content: 'hi' }], tools, temperature: 0.4 },
+      {
+        model: 'test-model',
+        messages: [
+          { role: 'user', content: 'hi', providerItems: [{ type: 'reasoning', id: 'rs_1' }] },
+        ],
+        tools,
+        temperature: 0.4,
+      },
       new AbortController().signal,
     )) {
       if (delta.type === 'finish') break;
@@ -46,5 +53,6 @@ describe('OpenAiCompatibleClient', () => {
       },
     ]);
     expect(requestBody?.tool_choice).toBe('auto');
+    expect(requestBody?.messages).toEqual([{ role: 'user', content: 'hi' }]);
   });
 });
