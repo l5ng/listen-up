@@ -88,4 +88,37 @@ describe('world', () => {
     expect(world.status).toBe('won');
     expect(world.consumeEvents().some((event) => event.kind === 'level_won')).toBe(true);
   });
+
+  it('only wins when both characters are at the exit ring', () => {
+    const world = new World(getLevel('sky-02'));
+    const exit = world.getSnapshot().props.find((prop) => prop.id === 'exit');
+    expect(exit).toBeDefined();
+    if (!exit) return;
+    world.a.pos = { x: exit.pos.x, y: 0.02, z: exit.pos.z };
+    world.b.pos = { x: exit.pos.x + 1.7, y: 0.02, z: exit.pos.z };
+    world.step(1 / 60);
+    expect(world.status).toBe('playing');
+
+    world.b.pos = { x: exit.pos.x + 1.4, y: 0.02, z: exit.pos.z };
+    world.step(1 / 60);
+    expect(world.status).toBe('won');
+  });
+
+  it('wins when Dash joins Echo at the edge of the exit ring', async () => {
+    const world = new World(getLevel('sky-02'));
+    for (let index = 0; index < 10; index += 1) {
+      world.a.pos = { x: 4.5, y: 0.02, z: 3.5 };
+      world.step(1 / 60);
+    }
+    await advance(world, world.startAction({ kind: 'move', target: 'exit' }));
+    const exit = world.getSnapshot().props.find((prop) => prop.id === 'exit');
+    expect(exit).toBeDefined();
+    if (!exit) return;
+    const echoDistance = Math.hypot(world.b.pos.x - exit.pos.x, world.b.pos.z - exit.pos.z);
+    expect(echoDistance).toBeLessThan(0.9);
+
+    world.a.pos = { x: exit.pos.x - 1, y: 0.02, z: exit.pos.z };
+    for (let index = 0; index < 15; index += 1) world.step(1 / 60);
+    expect(world.status).toBe('won');
+  });
 });

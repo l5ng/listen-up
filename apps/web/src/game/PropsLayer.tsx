@@ -2,6 +2,7 @@ import { RoundedBox } from '@react-three/drei';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { GameSession } from '@listen-up/game';
+import { EXIT_ZONE_RADIUS } from '@listen-up/sim';
 import type { RenderPropState, WorldRenderState } from '@listen-up/sim';
 import { useKenney, useStaticModel } from './models';
 
@@ -200,13 +201,17 @@ function ExitView({ source, prop }: { source: THREE.Object3D; prop: RenderPropSt
     <group position={[prop.pos.x, prop.pos.y, prop.pos.z]}>
       <primitive object={model} />
       <mesh ref={ring} position={[0, 0.95, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.85, 0.08, 12, 40]} />
+        <torusGeometry args={[EXIT_ZONE_RADIUS - 0.12, 0.07, 12, 48]} />
         <meshStandardMaterial color="#ffd45c" emissive="#ffb01f" emissiveIntensity={1.2} />
       </mesh>
       <pointLight position={[0, 1, 0]} color="#ffd45c" intensity={3} distance={5} />
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[EXIT_ZONE_RADIUS, 48]} />
+        <meshBasicMaterial color="#ffe6a1" transparent opacity={0.18} depthWrite={false} />
+      </mesh>
       <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.9, 1.15, 40]} />
-        <meshBasicMaterial color="#ffe6a1" transparent opacity={0.65} />
+        <ringGeometry args={[EXIT_ZONE_RADIUS - 0.09, EXIT_ZONE_RADIUS, 48]} />
+        <meshBasicMaterial color="#ffe6a1" transparent opacity={0.85} depthWrite={false} />
       </mesh>
     </group>
   );

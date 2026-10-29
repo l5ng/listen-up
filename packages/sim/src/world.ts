@@ -33,6 +33,10 @@ const RADIUS = 0.34;
 const HEIGHT = 1.6;
 const PLAYER_SPEED = 4.8;
 const B_SPEED = 4.1;
+/** The glowing ring around an exit; the character's body may overlap its rim. */
+export const EXIT_ZONE_RADIUS = 1.15;
+const EXIT_TRIGGER_RADIUS = EXIT_ZONE_RADIUS + RADIUS;
+const EXIT_ZONE_LEVEL_TOLERANCE = 1.2;
 const MAX_STEP_TIME = 60;
 const EPS = 1e-5;
 
@@ -862,7 +866,8 @@ export class World {
         if (closedGate && !closedGate.open) {
           throw new ActionError('NO_PATH', `闸门 ${closedGate.label} 现在是关闭的，过不去。`);
         }
-        const result = this.getNav().findPath(this.b.pos, target, 1.25);
+        const goalRadius = this.exits.has(command.target) ? 0.8 : 1.25;
+        const result = this.getNav().findPath(this.b.pos, target, goalRadius);
         if (!result) throw new ActionError('NO_PATH', this.noPathMessage(command.target));
         pending.path = result.path.map((node) => ({ x: node.x + 0.5, y: node.y, z: node.z + 0.5 }));
         if (pending.path.length === 0) {
@@ -1103,9 +1108,11 @@ export class World {
   private checkWin(): void {
     if (this.status === 'won') return;
     for (const exit of this.exits.values()) {
-      const aInside = overlaps(characterAabb(this.a.pos, RADIUS, HEIGHT), exit.aabb);
-      const bInside = overlaps(characterAabb(this.b.pos, RADIUS, HEIGHT), exit.aabb);
-      if (aInside && bInside) {
+      const center = centerXZ(exit.aabb);
+      const inZone = (char: Character): boolean =>
+        distanceXZ(char.pos, center) <= EXIT_TRIGGER_RADIUS &&
+        Math.abs(char.pos.y - exit.aabb.min.y) <= EXIT_ZONE_LEVEL_TOLERANCE;
+      if (inZone(this.a) && inZone(this.b)) {
         this.status = 'won';
         this.failAction('WON', '关卡完成。');
         this.emit({
