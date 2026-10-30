@@ -24,4 +24,4 @@
 
 ## Notes
 
-This is a non-commercial personal project. The code license is not specified yet.
+This is a non-commercial personal project. The code is licensed under the [MIT License](LICENSE).

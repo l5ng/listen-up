@@ -2,6 +2,7 @@
   "name": "listen-up",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @listen-up/web dev",

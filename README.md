@@ -1,5 +1,7 @@
 # Listen Up
 
+A browser-based 3D co-op puzzle game where you play Dash and an LLM plays Echo, your island buddy — you instruct Echo step by step in natural language, and it only knows what it can see and only does what you'd be able to do. [中文文档](README.md)
+
 一个纯 Web 的 3D AI 协作解谜游戏。玩家控制 Dash，模型控制 Echo（你的浮岛搭子）；你用中文一步步指挥 Echo：往哪走、推哪个箱子、什么时候等。Echo 的能力和玩家同粒度——只会朝方位或朝目标直线走、跳、推箱、拉杆，不认识路也不懂机关联动，需要你带它。
 
 项目目前是可玩的垂直切片：三关、完整 AI 循环、设置、对白、规则板和行动轨迹。
@@ -116,7 +118,6 @@ apps/web/e2e/      Playwright 烟雾测试
 - 没有音频、关卡编辑器、怪物或钥匙搬运。
 - 真实模型的规划质量取决于模型和接口；失败会以工具结果回到模型，重复失败会停下来让玩家介入。
 - Responses 模式只覆盖 OpenAI 的 HTTP/SSE 与 function tools，不支持 WebSocket、内置工具或 `previous_response_id`。
-- 代码许可证暂未指定。
 
 ## 素材与许可
 
