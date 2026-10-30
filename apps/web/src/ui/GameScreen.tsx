@@ -41,7 +41,7 @@ interface GameScreenProps {
 }
 
 const examples: Record<string, string> = {
-  'sky-01': '把木箱往南推下去给我垫脚。',
+  'sky-01': '把木箱往北推下去给我垫脚。',
   'sky-02': '等我踩上蓝色机关，你再朝旗门走。',
   'sky-03': '站到红色机关上，等我穿过闸门。',
 };
@@ -57,6 +57,9 @@ function ControlsGrid() {
       </span>
       <span>
         <b>E</b> 拉杆
+      </span>
+      <span>
+        <b>走向木箱</b> 推动它
       </span>
       <span>
         <b>Enter</b> 对 {COMPANION_NAME} 说话

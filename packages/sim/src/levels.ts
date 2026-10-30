@@ -107,6 +107,7 @@ const levelOne: LevelDef = {
   ].join('\n'),
   hints: [
     `试试对 ${COMPANION_NAME} 说：把木箱推下来给我垫脚。`,
+    `也可以自己把木箱推到平台边再推下去：朝木箱走就能推它。`,
     `${PLAYER_NAME} 踩上木箱后再跳一次，就能到高台。`,
     `高台上有拉杆，按 E 拉下它，${COMPANION_NAME} 就能过桥。`,
   ],

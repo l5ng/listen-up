@@ -41,7 +41,7 @@ async function exercise(id: string): Promise<void> {
   );
 
   if (id === 'sky-01') {
-    await stepUntil(world, world.startAction({ kind: 'push', box: 'crate_1', direction: '南' }));
+    await stepUntil(world, world.startAction({ kind: 'push', box: 'crate_1', direction: '北' }));
     const crate = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
     console.log('  推箱后木箱:', crate?.pos);
   } else if (id === 'sky-02') {

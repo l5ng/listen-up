@@ -172,6 +172,78 @@ describe('world', () => {
     expect(world.a.pos.y).toBeLessThan(0.5);
   });
 
+  it('lets the player shove a crate by walking into it', () => {
+    const world = new World(getLevel('sky-01'));
+    // Teleport the crate into the yard, then stand east of it and walk west:
+    // the crate must be shoved west too, with the player staying behind it.
+    const crates = (
+      world as unknown as {
+        crates: Map<string, { pos: { x: number; y: number; z: number } }>;
+      }
+    ).crates;
+    const crateObj = crates.get('crate_1');
+    expect(crateObj).toBeDefined();
+    if (!crateObj) return;
+    crateObj.pos = { x: 5.5, y: 0, z: 3 };
+    world.a.pos = { x: 7, y: 0.02, z: 3 };
+    const before = crateObj.pos.x;
+    for (let index = 0; index < 90; index += 1) {
+      world.setPlayerInput({ x: -1, z: 0, jump: false });
+      world.step(1 / 60);
+    }
+    expect(crateObj.pos.x).toBeLessThan(before - 0.5); // shoved west
+    expect(world.a.pos.x).toBeGreaterThan(crateObj.pos.x); // still east of it
+    expect(world.a.pos.y).toBeLessThan(0.5); // walked on the ground, not on top
+  });
+
+  it('stops Echo pushing a landed crate further and lets the player finish the job', async () => {
+    const world = new World(getLevel('sky-01'));
+    // First push drops the crate into the yard.
+    const first = await advance(
+      world,
+      world.startAction({ kind: 'push', box: 'crate_1', direction: '北' }),
+    );
+    expect(first.message).toContain('木箱');
+    const landed = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
+    expect(landed).toBeDefined();
+    if (!landed) return;
+    expect(landed.pos.y).toBe(0);
+    const landingZ = landed.pos.z;
+    // The push stopped driving the crate the moment it left support: it must
+    // land right below the platform edge instead of sliding across the yard.
+    expect(landingZ).toBeGreaterThan(6.5);
+    expect(landingZ).toBeLessThan(7.5);
+
+    // Echo is still on the platform; there is no stand point behind the crate,
+    // so a second Echo push must fail instead of teleporting it anywhere.
+    const second = await advance(
+      world,
+      world.startAction({ kind: 'push', box: 'crate_1', direction: '北' }),
+    ).then(
+      () => undefined,
+      (error: { code?: string }) => error,
+    );
+    expect(second?.code).toBe('NO_PATH');
+    const after = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
+    expect(after).toBeDefined();
+    if (!after) return;
+    expect(after.pos.z).toBe(landingZ); // unchanged
+
+    // The player, standing in the yard beside the platform, can keep
+    // shoving the crate west along the ground (the south side of the crate
+    // hangs over the void, so north/east/west shoves are the reachable ones).
+    world.a.pos = { x: after.pos.x + 1.5, y: 0.02, z: after.pos.z };
+    for (let index = 0; index < 90; index += 1) {
+      world.setPlayerInput({ x: -1, z: 0, jump: false });
+      world.step(1 / 60);
+    }
+    const final = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
+    expect(final).toBeDefined();
+    if (!final) return;
+    expect(final.pos.x).toBeLessThan(after.pos.x - 0.5); // shoved west by the player
+    expect(final.pos.z).toBe(landingZ); // unchanged along z
+  });
+
   it('fails a blocked push when a character stands in the crate path', async () => {
     const world = new World(getLevel('sky-01'));
     // First push drops the crate into the yard at ground level.

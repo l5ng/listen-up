@@ -46,6 +46,8 @@ const PLATE_MARGIN = 0.12;
 const EDGE_DROP = 0.6;
 /** Seconds of no positional progress before a steering walk reports BLOCKED. */
 const STUCK_SECONDS = 0.55;
+/** Speed at which a walking character or Echo's tool drives a crate. */
+const PUSH_SPEED = 2.4;
 
 interface Character {
   id: 'a' | 'b';
@@ -174,8 +176,10 @@ interface PendingAction {
     dir: Vec3;
     phase: 'approach' | 'push';
     startedAt: number;
-    /** Push continues until the crate is blocked or loses support. */
-    settleAt?: number;
+    /** Crate height when this push started; dropping below it means it fell. */
+    startY: number;
+    /** Set once the crate leaves support; the push then waits for the fall. */
+    droppedAt?: number;
   };
   phase: 'path' | 'act' | 'settle';
 }
@@ -429,6 +433,17 @@ export class World {
     return list;
   }
 
+  /**
+   * A crate's cached collider goes stale within a step as the crate is
+   * shoved; resolve crate colliders to their live AABB so characters never
+   * collide with where a crate used to be.
+   */
+  private effectiveAabb(collider: Collider): Aabb {
+    if (collider.kind !== 'crate') return collider.aabb;
+    const crate = this.crates.get(collider.id ?? '');
+    return crate ? this.crateAabb(crate) : collider.aabb;
+  }
+
   private updateCharacter(char: Character, input: PlayerInput, dt: number): void {
     if (char.respawnCooldown > 0) {
       char.respawnCooldown = Math.max(0, char.respawnCooldown - dt);
@@ -477,13 +492,14 @@ export class World {
       const body = characterAabb(char.pos, RADIUS, HEIGHT);
       let best: { axis: 'x' | 'y' | 'z'; depth: number; sign: number } | undefined;
       for (const collider of this.colliderCache) {
-        if (!overlaps(body, collider.aabb)) continue;
-        const pushPosX = collider.aabb.max.x - body.min.x;
-        const pushNegX = body.max.x - collider.aabb.min.x;
-        const pushPosY = collider.aabb.max.y - body.min.y;
-        const pushNegY = body.max.y - collider.aabb.min.y;
-        const pushPosZ = collider.aabb.max.z - body.min.z;
-        const pushNegZ = body.max.z - collider.aabb.min.z;
+        const aabb = this.effectiveAabb(collider);
+        if (!overlaps(body, aabb)) continue;
+        const pushPosX = aabb.max.x - body.min.x;
+        const pushNegX = body.max.x - aabb.min.x;
+        const pushPosY = aabb.max.y - body.min.y;
+        const pushNegY = body.max.y - aabb.min.y;
+        const pushPosZ = aabb.max.z - body.min.z;
+        const pushNegZ = body.max.z - aabb.min.z;
         const candidates: { axis: 'x' | 'y' | 'z'; depth: number; sign: number }[] = [
           { axis: 'x', depth: pushPosX, sign: 1 },
           { axis: 'x', depth: pushNegX, sign: -1 },
@@ -521,9 +537,14 @@ export class World {
     char.pos.x += dx;
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
-      if (dx > 0) char.pos.x = Math.min(char.pos.x, collider.aabb.min.x - RADIUS - EPS);
-      else char.pos.x = Math.max(char.pos.x, collider.aabb.max.x + RADIUS + EPS);
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
+      if (this.tryShoveCrate(char, collider, dx, 0, dt)) {
+        Object.assign(body, characterAabb(char.pos, RADIUS, HEIGHT));
+        continue;
+      }
+      if (dx > 0) char.pos.x = Math.min(char.pos.x, aabb.min.x - RADIUS - EPS);
+      else char.pos.x = Math.max(char.pos.x, aabb.max.x + RADIUS + EPS);
       char.vel.x = 0;
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
@@ -536,9 +557,14 @@ export class World {
     char.pos.z += dz;
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
-      if (dz > 0) char.pos.z = Math.min(char.pos.z, collider.aabb.min.z - RADIUS - EPS);
-      else char.pos.z = Math.max(char.pos.z, collider.aabb.max.z + RADIUS + EPS);
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
+      if (this.tryShoveCrate(char, collider, 0, dz, dt)) {
+        Object.assign(body, characterAabb(char.pos, RADIUS, HEIGHT));
+        continue;
+      }
+      if (dz > 0) char.pos.z = Math.min(char.pos.z, aabb.min.z - RADIUS - EPS);
+      else char.pos.z = Math.max(char.pos.z, aabb.max.z + RADIUS + EPS);
       char.vel.z = 0;
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
@@ -552,18 +578,61 @@ export class World {
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     char.grounded = false;
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
       if (dy < 0) {
-        char.pos.y = Math.max(char.pos.y, collider.aabb.max.y);
+        char.pos.y = Math.max(char.pos.y, aabb.max.y);
         char.vel.y = 0;
         char.grounded = true;
       } else if (dy > 0) {
-        char.pos.y = Math.min(char.pos.y, collider.aabb.min.y - HEIGHT - EPS);
+        char.pos.y = Math.min(char.pos.y, aabb.min.y - HEIGHT - EPS);
         char.vel.y = 0;
       }
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
     }
+  }
+
+  /**
+   * The player shoves a grounded crate by walking into it, instead of being
+   * stopped by it. Echo never shoves while walking — it has the push tool.
+   * The crate slides at PUSH_SPEED until it is blocked or leaves support
+   * (pushed off an edge — gravity then takes over). Returns true when the
+   * collider was handled here as a crate, whether or not it moved.
+   */
+  private tryShoveCrate(
+    char: Character,
+    collider: Collider,
+    dx: number,
+    dz: number,
+    dt: number,
+  ): boolean {
+    if (char.id !== 'a') return false;
+    if (collider.kind !== 'crate') return false;
+    const crate = this.crates.get(collider.id ?? '');
+    if (!crate) return false;
+    // Diagonal movement or airborne: treat the crate as a wall.
+    if (Math.abs(dx) > EPS && Math.abs(dz) > EPS) return false;
+    if (!char.grounded) return false;
+    // Square contact only: brushing a corner must not shove the crate sideways.
+    const body = this.crateAabb(crate);
+    if (Math.abs(dx) > EPS && (char.pos.z < body.min.z || char.pos.z > body.max.z)) return false;
+    if (Math.abs(dz) > EPS && (char.pos.x < body.min.x || char.pos.x > body.max.x)) return false;
+    // An airborne or already-falling crate cannot be steered by walking.
+    if (!this.crateSupported(crate)) return false;
+    const stepX = Math.sign(dx) * PUSH_SPEED * dt;
+    const stepZ = Math.sign(dz) * PUSH_SPEED * dt;
+    this.moveCrateXZ(crate, stepX, stepZ, char);
+    this.navDirty = true;
+    // Glue the character to the crate's current face either way: the shove
+    // keeps contact while the crate slides, and stops the character against
+    // the crate's up-to-date position when it is blocked.
+    const face = this.crateAabb(crate);
+    if (stepX > 0) char.pos.x = face.min.x - RADIUS - EPS;
+    else if (stepX < 0) char.pos.x = face.max.x + RADIUS + EPS;
+    else if (stepZ > 0) char.pos.z = face.min.z - RADIUS - EPS;
+    else char.pos.z = face.max.z + RADIUS + EPS;
+    return true;
   }
 
   private crateAabb(crate: CrateState): Aabb {
@@ -577,7 +646,7 @@ export class World {
    * Moves a crate horizontally with the same axis sweep the characters use.
    * Returns false when the crate was blocked by geometry or a character.
    */
-  private moveCrateXZ(crate: CrateState, dx: number, dz: number): boolean {
+  private moveCrateXZ(crate: CrateState, dx: number, dz: number, ignore?: Character): boolean {
     let movedX = true;
     if (Math.abs(dx) >= EPS) {
       crate.pos.x += dx;
@@ -606,8 +675,10 @@ export class World {
         body = this.crateAabb(crate);
       }
     }
-    // Characters stop a moving crate instead of being swept away.
+    // Characters stop a moving crate instead of being swept away. The pushing
+    // character itself is excluded so it can stay in contact while shoving.
     for (const char of [this.a, this.b]) {
+      if (char === ignore) continue;
       if (overlaps(this.crateAabb(crate), characterAabb(char.pos, RADIUS, HEIGHT))) return false;
     }
     return movedX && movedZ;
@@ -1058,6 +1129,7 @@ export class World {
           dir,
           phase: 'approach',
           startedAt: this.time,
+          startY: box.pos.y,
         };
         return;
       }
@@ -1281,27 +1353,33 @@ export class World {
         this.b.facing = Math.atan2(push.dir.x, push.dir.z);
         return;
       }
-      // Pushing: drive the crate along dir until it is blocked, has dropped
-      // below where it started (pushed off an edge — let gravity settle it),
-      // or the push phase times out.
-      const speed = 2.4;
-      const dx = push.dir.x * speed * dt;
-      const dz = push.dir.z * speed * dt;
+      // Pushing: drive the crate along dir until it is blocked or has left
+      // support (pushed off an edge). Once it has dropped, stop driving it and
+      // only wait for gravity to settle the fall.
+      // Once the crate has left support it is never driven again this push:
+      // stop and wait for gravity to settle it below. (Without this, a crate
+      // that lands and regains support would be shoved across the ground.)
+      const unsupported = !this.crateSupported(box);
+      if (push.droppedAt === undefined && unsupported) push.droppedAt = this.time;
+      if (push.droppedAt !== undefined) {
+        const settled = this.crateSupported(box) && box.pos.y < push.startY - 0.4;
+        if (settled || this.time - push.droppedAt > 3) {
+          const dropped = box.pos.y < push.startY - 0.4;
+          this.finishAction(
+            dropped
+              ? `把${box.label}朝${push.direction}推了出去。`
+              : `${box.label}没有站稳，没能推出去。`,
+          );
+        }
+        return;
+      }
+      const dx = push.dir.x * PUSH_SPEED * dt;
+      const dz = push.dir.z * PUSH_SPEED * dt;
       const moved = this.moveCrateXZ(box, dx, dz);
       this.b.facing = Math.atan2(push.dir.x, push.dir.z);
       this.navDirty = true;
-      const fell = box.pos.y < box.initial.y - 0.4;
       if (!moved) {
         this.finishAction(`${box.label}被挡住了，推不动了。`);
-        return;
-      }
-      if (fell) {
-        // Off the edge: stop pushing, wait briefly for the fall to settle.
-        push.settleAt ??= this.time + 1.6;
-        if (this.time > (push.settleAt ?? 0)) {
-          this.finishAction(`把${box.label}朝${push.direction}推了出去。`);
-          return;
-        }
         return;
       }
       // Cap the continuous push at ~4 seconds of pushing.

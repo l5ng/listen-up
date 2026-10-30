@@ -35,7 +35,7 @@ class DemoBrain implements LlmClient {
         index: 0,
         id: 'demo_push_' + String(this.toolId),
         name: 'push_box',
-        argumentsDelta: JSON.stringify({ box: 'crate_1', direction: '南' }),
+        argumentsDelta: JSON.stringify({ box: 'crate_1', direction: '北' }),
       };
       yield { type: 'finish', reason: 'tool_calls' };
       this.step = 1;
