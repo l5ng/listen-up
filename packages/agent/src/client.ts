@@ -128,6 +128,7 @@ export class OpenAiCompatibleClient implements LlmClient {
       tools: wireTools.length > 0 ? wireTools : undefined,
       tool_choice: wireTools.length > 0 ? 'auto' : undefined,
       stream: true,
+      stream_options: { include_usage: true },
       temperature: request.temperature,
       max_tokens: request.maxTokens ?? this.config.maxTokens,
     };
@@ -164,7 +165,12 @@ export class OpenAiCompatibleClient implements LlmClient {
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('text/event-stream')) {
       try {
-        const payload = await response.json();
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch {
+          throw new LlmError('parse', '模型接口返回了无法解析的 JSON。');
+        }
         for (const delta of parseNonStreaming(payload)) yield delta;
       } finally {
         clearTimeout(timer);

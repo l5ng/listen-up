@@ -95,7 +95,9 @@ export async function* readSseData(response: Response): AsyncGenerator<Record<st
     try {
       return JSON.parse(data) as Record<string, unknown>;
     } catch {
-      return undefined;
+      // A data line that is neither empty, [DONE], nor valid JSON means the
+      // stream is corrupt; silently dropping it would hide truncated output.
+      throw new LlmError('parse', '模型接口返回了无法解析的 SSE 数据行。', { retryable: true });
     }
   };
 

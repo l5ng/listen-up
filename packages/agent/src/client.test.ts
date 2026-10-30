@@ -54,5 +54,40 @@ describe('OpenAiCompatibleClient', () => {
     ]);
     expect(requestBody?.tool_choice).toBe('auto');
     expect(requestBody?.messages).toEqual([{ role: 'user', content: 'hi' }]);
+    expect(requestBody?.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('reports a parse error when a non-streaming fallback returns invalid JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response('<html>gateway error</html>', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+
+    const client = new OpenAiCompatibleClient({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'test-key',
+      model: 'test-model',
+    });
+    const collected: unknown[] = [];
+    await expect(
+      (async () => {
+        for await (const delta of client.stream(
+          {
+            model: 'test-model',
+            messages: [{ role: 'user', content: 'hi' }],
+            tools: [],
+            temperature: 0.4,
+          },
+          new AbortController().signal,
+        )) {
+          collected.push(delta);
+        }
+      })(),
+    ).rejects.toMatchObject({ code: 'parse' });
+    expect(collected).toEqual([]);
   });
 });

@@ -111,6 +111,46 @@ describe('runAgentTurn', () => {
     expect(messages.at(-1)?.providerItems).toEqual(providerItems);
   });
 
+  it('rejects an empty stream instead of reporting a successful empty turn', async () => {
+    const client = new FakeClient([[], [], []]);
+    await expect(
+      runAgentTurn({
+        client,
+        model: 'fake',
+        messages: [{ role: 'system', content: 'system' }],
+        tools: [],
+        signal: new AbortController().signal,
+        executeTool: async () => ({ ok: true, summary: 'ok', content: '{"ok":true}' }),
+      }),
+    ).rejects.toMatchObject({ code: 'parse' });
+    expect(client.requests.length).toBe(3); // retried the retryable parse error
+  });
+
+  it('accumulates usage across steps within a turn', async () => {
+    const client = new FakeClient([
+      [
+        { type: 'content', text: '我去推箱子。' },
+        toolCall('push_box', '{"box":"crate_1","to":"yard_a"}'),
+        { type: 'finish', reason: 'tool_calls' },
+        { type: 'usage', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } },
+      ],
+      [
+        { type: 'content', text: '推下去了。' },
+        { type: 'finish', reason: 'stop' },
+        { type: 'usage', usage: { promptTokens: 20, completionTokens: 7, totalTokens: 27 } },
+      ],
+    ]);
+    const result = await runAgentTurn({
+      client,
+      model: 'fake',
+      messages: [{ role: 'system', content: 'system' }],
+      tools: [{ name: 'push_box', description: 'push', parameters: { type: 'object' } }],
+      signal: new AbortController().signal,
+      executeTool: async () => ({ ok: true, summary: 'pushed', content: '{"ok":true}' }),
+    });
+    expect(result.usage).toEqual({ promptTokens: 30, completionTokens: 12, totalTokens: 42 });
+  });
+
   it('stops at the configured step limit', async () => {
     const scripts = Array.from({ length: 4 }, () => [
       toolCall('observe', '{}'),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { endpoint, readSseData } from './http';
+import { LlmError } from './types';
 
 describe('endpoint', () => {
   it('normalizes base URLs and full endpoints', () => {
@@ -46,5 +47,27 @@ describe('readSseData', () => {
     const events: Record<string, unknown>[] = [];
     for await (const event of readSseData(response)) events.push(event);
     expect(events).toEqual([{ a: 1 }, { b: 2 }, { c: 3 }]);
+  });
+
+  it('throws on a data line that is not valid JSON instead of dropping it', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"a":1}\n\ndata: not-json\n\ndata: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    const response = new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    const events: Record<string, unknown>[] = [];
+    await expect(
+      (async () => {
+        for await (const event of readSseData(response)) events.push(event);
+      })(),
+    ).rejects.toMatchObject({ code: 'parse' });
+    expect(events).toEqual([{ a: 1 }]);
+    expect(LlmError).toBeDefined();
   });
 });

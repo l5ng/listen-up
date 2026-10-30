@@ -112,9 +112,11 @@ async function collectStep(
       } else if (delta.type === 'finish') {
         finishReason = delta.reason;
       } else if (delta.type === 'usage') {
-        usage.promptTokens = delta.usage.promptTokens ?? usage.promptTokens;
-        usage.completionTokens = delta.usage.completionTokens ?? usage.completionTokens;
-        usage.totalTokens = delta.usage.totalTokens ?? usage.totalTokens;
+        // Accumulate across steps: every step bills its full prompt again.
+        usage.promptTokens = (usage.promptTokens ?? 0) + (delta.usage.promptTokens ?? 0);
+        usage.completionTokens =
+          (usage.completionTokens ?? 0) + (delta.usage.completionTokens ?? 0);
+        usage.totalTokens = (usage.totalTokens ?? 0) + (delta.usage.totalTokens ?? 0);
       }
     }
     const calls: ToolCall[] = [...partials.entries()]
@@ -124,6 +126,11 @@ async function collectStep(
         type: 'function',
         function: { name: partial.name, arguments: partial.args || '{}' },
       }));
+    // A stream that produced no finish, no content, and no tool calls is a
+    // truncated/corrupt response, not a successful empty turn.
+    if (!finishReason && content.length === 0 && calls.length === 0) {
+      throw new LlmError('parse', '模型没有返回任何内容。', { retryable: true });
+    }
     return { content, reasoning, calls, finishReason, providerItems };
   };
 
@@ -195,7 +202,9 @@ export async function runAgentTurn(options: RunAgentTurnOptions): Promise<AgentT
         role: 'tool',
         tool_call_id: call.id,
         name: call.function.name,
-        content: capContent(JSON.stringify({ ok: false, error: '一次最多执行 6 个工具调用。' })),
+        content: capContent(
+          JSON.stringify({ ok: false, error: `一次最多执行 ${maxCalls} 个工具调用。` }),
+        ),
       });
     }
 
