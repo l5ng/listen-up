@@ -14,7 +14,7 @@ test('first run shows the demo before asking for a key', async ({ page }) => {
 
   await page.getByRole('button', { name: '连接模型，继续' }).click();
   await expect(page.getByRole('heading', { name: '连接 Echo 的大脑' })).toBeVisible();
-  await expect(page.locator('#model-name')).toHaveValue('deepseek-chat');
+  await expect(page.locator('#model-name')).toHaveValue('deepseek-flash');
 
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('云端服务需要 API key；本地 Ollama 可以留空。')).toBeVisible();

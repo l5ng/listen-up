@@ -36,7 +36,7 @@ export const providerPresets = [
     id: 'deepseek',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     keyUrl: 'https://platform.deepseek.com/api_keys',
     note: '便宜，支持工具调用',
     protocol: 'chat',
