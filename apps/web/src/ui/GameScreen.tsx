@@ -41,8 +41,8 @@ interface GameScreenProps {
 }
 
 const examples: Record<string, string> = {
-  'sky-01': '把木箱推下来给我垫脚。',
-  'sky-02': '等我踩上蓝色机关，你再过桥。',
+  'sky-01': '把木箱往南推下去给我垫脚。',
+  'sky-02': '等我踩上蓝色机关，你再朝旗门走。',
   'sky-03': '站到红色机关上，等我穿过闸门。',
 };
 
@@ -100,7 +100,7 @@ export function GameScreen({
         client: createClient(settings),
         model: settings.provider.model,
         temperature: settings.provider.temperature,
-        maxSteps: 8,
+        maxSteps: 12,
       }),
     [level, settings],
   );

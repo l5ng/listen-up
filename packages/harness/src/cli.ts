@@ -41,7 +41,7 @@ async function exercise(id: string): Promise<void> {
   );
 
   if (id === 'sky-01') {
-    await stepUntil(world, world.startAction({ kind: 'push', box: 'crate_1', to: 'yard_a' }));
+    await stepUntil(world, world.startAction({ kind: 'push', box: 'crate_1', direction: '南' }));
     const crate = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
     console.log('  推箱后木箱:', crate?.pos);
   } else if (id === 'sky-02') {
@@ -49,10 +49,11 @@ async function exercise(id: string): Promise<void> {
     for (let index = 0; index < 20; index += 1) world.step(1 / 60);
     const bridge = world.getSnapshot().props.find((prop) => prop.id === 'bridge_1');
     console.log(`  ${PLAYER_NAME} 站机关后桥:`, bridge?.open);
-    await stepUntil(world, world.startAction({ kind: 'move', target: 'exit' }), 1200);
+    await stepUntil(world, world.startAction({ kind: 'walk_to', target: 'bridge_center' }));
+    await stepUntil(world, world.startAction({ kind: 'walk_to', target: 'exit' }), 1200);
     console.log(`  ${COMPANION_NAME} 位置:`, world.b.pos);
   } else {
-    await stepUntil(world, world.startAction({ kind: 'move', target: 'plate_red' }));
+    await stepUntil(world, world.startAction({ kind: 'walk_to', target: 'plate_red' }));
     for (let index = 0; index < 10; index += 1) world.step(1 / 60);
     const gate = world.getSnapshot().props.find((prop) => prop.id === 'gate_1');
     console.log(`  ${COMPANION_NAME} 踩住机关后闸门:`, gate?.open);

@@ -53,7 +53,7 @@ describe('game tools and observation', () => {
       {
         id: 'call_1',
         type: 'function',
-        function: { name: 'move_to', arguments: '{"target":"moon"}' },
+        function: { name: 'walk_to', arguments: '{"target":"moon"}' },
       },
       new AbortController().signal,
     );

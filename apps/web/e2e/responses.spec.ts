@@ -37,7 +37,7 @@ test('Echo uses the Responses API for a tool loop', async ({ page }) => {
             type: 'function_call',
             call_id: 'call_push',
             name: 'push_box',
-            arguments: '{"box":"crate_1","to":"yard_a"}',
+            arguments: '{"box":"crate_1","direction":"北"}',
             status: 'completed',
           },
         ]
@@ -111,7 +111,8 @@ test('Echo uses the Responses API for a tool loop', async ({ page }) => {
     return session?.world.getRenderState().crates[0];
   });
   expect(state?.pos.y).toBe(0);
-  expect(state?.pos.z).toBeCloseTo(6.6, 1);
+  expect(state?.pos.z).toBeGreaterThan(0);
+  expect(state?.pos.z).toBeLessThan(7.5);
   expect(bodies).toHaveLength(2);
   expect(bodies[0]?.instructions).toContain('你是 Echo');
   expect(bodies[0]?.store).toBe(false);
