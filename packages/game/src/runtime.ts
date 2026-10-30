@@ -34,18 +34,27 @@ export class TeammateRuntime {
   }
 
   async runTurn(situation: string, signal: AbortSignal): Promise<AgentTurnResult> {
+    const historyLength = this.messages.length;
     this.messages.push({ role: 'user', content: situation });
-    const result = await runAgentTurn({
-      client: this.options.client,
-      model: this.options.model,
-      messages: this.messages,
-      tools: this.options.tools,
-      executeTool: this.options.executeTool,
-      temperature: this.options.temperature ?? 0.4,
-      maxSteps: this.options.maxSteps ?? 8,
-      signal,
-      onEvent: this.options.onEvent,
-    });
+    let result: AgentTurnResult;
+    try {
+      result = await runAgentTurn({
+        client: this.options.client,
+        model: this.options.model,
+        messages: this.messages,
+        tools: this.options.tools,
+        executeTool: this.options.executeTool,
+        temperature: this.options.temperature ?? 0.4,
+        maxSteps: this.options.maxSteps ?? 8,
+        signal,
+        onEvent: this.options.onEvent,
+      });
+    } catch (error) {
+      // A failed turn leaves unusable history (a user message that never got a
+      // reply, or dangling tool calls). Roll back so retry() starts clean.
+      this.messages.length = historyLength;
+      throw error;
+    }
     this.usage = {
       promptTokens: (this.usage.promptTokens ?? 0) + (result.usage.promptTokens ?? 0) || undefined,
       completionTokens:

@@ -124,6 +124,7 @@ export class GameSession {
     if (!text) return;
     this.setUi({ agentError: undefined });
     this.queue.push({ source: 'player', text });
+    this.activeAbort?.abort();
     this.schedule(80);
   }
 
@@ -165,7 +166,9 @@ export class GameSession {
     if (this.disposed || this.running || this.scheduleTimer) return;
     this.scheduleTimer = setTimeout(() => {
       this.scheduleTimer = undefined;
-      void this.processQueue();
+      void this.processQueue().catch((error) => {
+        this.handleError(this.toAgentError(error));
+      });
     }, ms);
   }
 
@@ -195,16 +198,17 @@ export class GameSession {
           ...this.worldNotes.splice(0),
           ...batch.filter((entry) => entry.source === 'world').map((entry) => entry.text),
         ];
-        const situation = formatSituation(
-          this.world.getSnapshot(),
-          this.level,
-          this.rules.format(),
-          {
+        let situation: string;
+        try {
+          situation = formatSituation(this.world.getSnapshot(), this.level, this.rules.format(), {
             playerText: playerText || undefined,
             worldEvent: events.length > 0 ? events.join('\n') : undefined,
             bStatus: '正在思考',
-          },
-        );
+          });
+        } catch (error) {
+          if (!controller.signal.aborted) this.handleError(this.toAgentError(error));
+          continue;
+        }
         try {
           const result = await this.runtime.runTurn(situation, controller.signal);
           if (!controller.signal.aborted && result.stopped === 'max-steps') {
