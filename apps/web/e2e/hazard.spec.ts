@@ -37,7 +37,7 @@ test('hazard warning interrupts Echo and sends it to the safe pad', async ({ pag
             },
           ],
         },
-        call('move_to', '{"target":"plate_red"}', 'call_move'),
+        call('walk_to', '{"target":"plate_red"}', 'call_move'),
         { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
       ]);
     } else if (requests === 2) {
@@ -60,7 +60,7 @@ test('hazard warning interrupts Echo and sends it to the safe pad', async ({ pag
             },
           ],
         },
-        call('move_to', '{"target":"safe_pad"}', 'call_safe'),
+        call('walk_to', '{"target":"safe_pad"}', 'call_safe'),
         { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
       ]);
     } else {

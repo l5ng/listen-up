@@ -1,5 +1,5 @@
-import { ActionError, PLAYER_NAME, World } from '@listen-up/sim';
-import type { BCommand, LevelDef, WaitCondition, WorldSnapshot } from '@listen-up/sim';
+import { ActionError, DIRECTIONS, PLAYER_NAME, World } from '@listen-up/sim';
+import type { BCommand, Direction, LevelDef, WaitCondition, WorldSnapshot } from '@listen-up/sim';
 import type { ToolCall, ToolDefinition, ToolExecution } from '@listen-up/agent';
 import type { RuleStore } from './rules';
 import type { StandingRule } from './types';
@@ -109,9 +109,22 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
     {
-      name: 'move_to',
+      name: 'walk',
       description:
-        '走到一个锚点附近。引擎会自动寻路、绕过静态障碍；门或桥需要先打开。target 使用观察里的 id 或中文标签。',
+        '朝一个世界方位直线走一小段（0.2 到 5 秒）。不会自动绕路：被挡住或走到边缘会停下并告诉你原因。方位以北为 z 减小方向。',
+      parameters: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: [...DIRECTIONS], description: '世界方位。' },
+          seconds: { type: 'number', description: '走多少秒，0.2 到 5。' },
+        },
+        required: ['direction', 'seconds'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'walk_to',
+      description: `朝一个看得见的目标直线走过去。不会自动绕路；被挡住或走到边缘会停下。`,
       parameters: {
         type: 'object',
         properties: {
@@ -122,6 +135,18 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
           },
         },
         required: ['target'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'jump',
+      description:
+        '原地跳一下，或朝一个方位助跑跳。可以跳上矮台阶或跳过窄缺口；也可能掉下去，掉下去会被送回安全位置。',
+      parameters: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: [...DIRECTIONS], description: '可选：跳跃方向。' },
+        },
         additionalProperties: false,
       },
     },
@@ -137,14 +162,14 @@ export function buildToolDefinitions(level: LevelDef): ToolDefinition[] {
     },
     {
       name: 'push_box',
-      description: `把木箱朝目标方向推。可以推下边缘；to 用锚点，player 表示推向 ${PLAYER_NAME} 附近。`,
+      description: '朝一个方位把木箱推出去。会先走到箱子背面再推；箱子被挡住会停下。',
       parameters: {
         type: 'object',
         properties: {
           box: { type: 'string', enum: crates, description: '木箱 id。' },
-          to: { type: 'string', enum: moveTargets, description: '推动方向的目标锚点或 player。' },
+          direction: { type: 'string', enum: [...DIRECTIONS], description: '推动方位。' },
         },
-        required: ['box', 'to'],
+        required: ['box', 'direction'],
         additionalProperties: false,
       },
     },
@@ -255,14 +280,29 @@ export class ToolExecutor {
       switch (call.function.name) {
         case 'observe':
           return this.success('已重新观察场景。');
-        case 'move_to': {
+        case 'walk': {
+          const direction = this.requireDirection(args, 'direction');
+          const seconds = this.requireNumber(args, 'seconds');
+          if (seconds < 0.2 || seconds > 5) throw new Error('行走秒数必须在 0.2 到 5 之间。');
+          return await this.action({ kind: 'walk', direction, seconds }, signal);
+        }
+        case 'walk_to': {
           const target = this.requireString(args, 'target');
           const resolved = resolveId(this.level, target, [...this.anchors, 'player']);
           if (!resolved)
             throw new Error(
               `目标 ${target} 不存在。可用目标：${[...this.anchors, 'player'].join('、')}。`,
             );
-          return await this.action({ kind: 'move', target: resolved }, signal);
+          return await this.action({ kind: 'walk_to', target: resolved }, signal);
+        }
+        case 'jump': {
+          const rawDirection = args.direction;
+          const direction =
+            typeof rawDirection === 'string' ? this.requireDirection(args, 'direction') : undefined;
+          return await this.action(
+            direction ? { kind: 'jump', direction } : { kind: 'jump' },
+            signal,
+          );
         }
         case 'use': {
           const target = this.requireString(args, 'target');
@@ -275,10 +315,8 @@ export class ToolExecutor {
           const boxValue = this.requireString(args, 'box');
           const box = resolveId(this.level, boxValue, this.crates);
           if (!box) throw new Error(`${boxValue} 不是木箱。可用木箱：${this.crates.join('、')}。`);
-          const toValue = this.requireString(args, 'to');
-          const to = resolveId(this.level, toValue, [...this.anchors, 'player']);
-          if (!to) throw new Error(`推动目标 ${toValue} 不存在。`);
-          return await this.action({ kind: 'push', box, to }, signal);
+          const direction = this.requireDirection(args, 'direction');
+          return await this.action({ kind: 'push', box, direction }, signal);
         }
         case 'wait': {
           const seconds = this.requireNumber(args, 'seconds');
@@ -348,6 +386,13 @@ export class ToolExecutor {
     return value;
   }
 
+  private requireDirection(args: Record<string, unknown>, key: string): Direction {
+    const value = args[key];
+    if (typeof value !== 'string' || !(DIRECTIONS as readonly string[]).includes(value))
+      throw new Error(`参数 ${key} 必须是方位：${DIRECTIONS.join('、')}。`);
+    return value as Direction;
+  }
+
   private snapshot(): WorldSnapshot {
     return this.host.world.getSnapshot();
   }
@@ -377,8 +422,12 @@ export function humanizeToolName(name: string): string {
   switch (name) {
     case 'observe':
       return '观察';
-    case 'move_to':
-      return '移动';
+    case 'walk':
+      return '行走';
+    case 'walk_to':
+      return '走向';
+    case 'jump':
+      return '跳跃';
     case 'use':
       return '操作';
     case 'push_box':
@@ -401,11 +450,15 @@ export function humanizeToolArgs(level: LevelDef, name: string, raw: string): st
     const args = parseArgs(raw) as Record<string, unknown>;
     const target = typeof args.target === 'string' ? args.target : undefined;
     const box = typeof args.box === 'string' ? args.box : undefined;
-    const to = typeof args.to === 'string' ? args.to : undefined;
-    if (name === 'move_to' && target) return labelOf(level, target);
+    const direction = typeof args.direction === 'string' ? args.direction : undefined;
+    if (name === 'walk' && direction)
+      return typeof args.seconds === 'number'
+        ? `朝${direction} ${args.seconds} 秒`
+        : `朝${direction}`;
+    if (name === 'walk_to' && target) return labelOf(level, target);
+    if (name === 'jump') return direction ? `朝${direction}跳` : '原地跳';
     if (name === 'use' && target) return labelOf(level, target);
-    if (name === 'push_box' && box)
-      return `${labelOf(level, box)} → ${to ? labelOf(level, to) : '?'}`;
+    if (name === 'push_box' && box) return `${labelOf(level, box)} → ${direction ?? '?'}`;
     if (name === 'wait' && typeof args.seconds === 'number') return `${args.seconds} 秒`;
     if (name === 'wait_until' && args.condition && typeof args.condition === 'object') {
       const condition = args.condition as Record<string, unknown>;

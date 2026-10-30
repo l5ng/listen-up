@@ -38,7 +38,7 @@ test('Echo executes a mocked tool call and pushes the crate', async ({ page }) =
                         type: 'function',
                         function: {
                           name: 'push_box',
-                          arguments: '{"box":"crate_1","to":"yard_a"}',
+                          arguments: '{"box":"crate_1","direction":"北"}',
                         },
                       },
                     ],
@@ -111,7 +111,8 @@ test('Echo executes a mocked tool call and pushes the crate', async ({ page }) =
     };
   });
   expect(state.crate?.pos.y).toBe(0);
-  expect(state.crate?.pos.z).toBeCloseTo(6.6, 1);
+  expect(state.crate?.pos.z).toBeGreaterThan(0);
+  expect(state.crate?.pos.z).toBeLessThan(7.5);
   expect(requests).toBe(2);
 
   await page.keyboard.press('Tab');

@@ -12,6 +12,7 @@ import type {
   BCommand,
   BlockSpec,
   CharacterSnapshot,
+  Direction,
   HazardCycle,
   HazardPhase,
   LevelDef,
@@ -23,7 +24,7 @@ import type {
   WorldEvent,
   WorldSnapshot,
 } from './types';
-import { ActionError } from './types';
+import { ActionError, directionVector } from './types';
 import { COMPANION_NAME, PLAYER_NAME } from './names';
 import { NavGrid } from './nav';
 
@@ -41,6 +42,12 @@ const MAX_STEP_TIME = 60;
 const EPS = 1e-5;
 /** Horizontal slack for treating a character as standing on a plate-sized AABB. */
 const PLATE_MARGIN = 0.12;
+/** Steering walks stop before drops larger than this (meters). */
+const EDGE_DROP = 0.6;
+/** Seconds of no positional progress before a steering walk reports BLOCKED. */
+const STUCK_SECONDS = 0.55;
+/** Speed at which a walking character or Echo's tool drives a crate. */
+const PUSH_SPEED = 2.4;
 
 interface Character {
   id: 'a' | 'b';
@@ -150,13 +157,29 @@ interface PendingAction {
   waitRemaining?: number;
   waitCondition?: WaitCondition;
   waitTimeout?: number;
+  /** Steering walk: fixed heading for `walk`, or tracked anchor for `walk_to`. */
+  steering?: {
+    mode: 'direction' | 'target';
+    dir?: Vec3;
+    targetId?: string;
+    targetPos?: Vec3;
+    radius: number;
+    walkRemaining?: number;
+  };
+  /** Jump action state: resolves once b lands again. */
+  jumping?: {
+    airborneAt?: number;
+  };
   push?: {
     boxId: string;
-    toId: string;
+    direction: Direction;
     dir: Vec3;
-    distance: number;
     phase: 'approach' | 'push';
     startedAt: number;
+    /** Crate height when this push started; dropping below it means it fell. */
+    startY: number;
+    /** Set once the crate leaves support; the push then waits for the fall. */
+    droppedAt?: number;
   };
   phase: 'path' | 'act' | 'settle';
 }
@@ -173,6 +196,15 @@ function cloneVec(v: Vec3): Vec3 {
 
 function centerXZ(a: Aabb): Vec3 {
   return { x: (a.min.x + a.max.x) / 2, y: a.min.y, z: (a.min.z + a.max.z) / 2 };
+}
+
+/** Where Echo must stand to push the crate along dir. */
+function pushStandPosition(crate: CrateState, dir: Vec3): Vec3 {
+  return {
+    x: crate.pos.x - dir.x * (crate.size.x / 2 + RADIUS + 0.25),
+    y: crate.pos.y,
+    z: crate.pos.z - dir.z * (crate.size.z / 2 + RADIUS + 0.25),
+  };
 }
 
 function propSize(prop: LevelProp): Vec3 {
@@ -401,6 +433,17 @@ export class World {
     return list;
   }
 
+  /**
+   * A crate's cached collider goes stale within a step as the crate is
+   * shoved; resolve crate colliders to their live AABB so characters never
+   * collide with where a crate used to be.
+   */
+  private effectiveAabb(collider: Collider): Aabb {
+    if (collider.kind !== 'crate') return collider.aabb;
+    const crate = this.crates.get(collider.id ?? '');
+    return crate ? this.crateAabb(crate) : collider.aabb;
+  }
+
   private updateCharacter(char: Character, input: PlayerInput, dt: number): void {
     if (char.respawnCooldown > 0) {
       char.respawnCooldown = Math.max(0, char.respawnCooldown - dt);
@@ -449,13 +492,14 @@ export class World {
       const body = characterAabb(char.pos, RADIUS, HEIGHT);
       let best: { axis: 'x' | 'y' | 'z'; depth: number; sign: number } | undefined;
       for (const collider of this.colliderCache) {
-        if (!overlaps(body, collider.aabb)) continue;
-        const pushPosX = collider.aabb.max.x - body.min.x;
-        const pushNegX = body.max.x - collider.aabb.min.x;
-        const pushPosY = collider.aabb.max.y - body.min.y;
-        const pushNegY = body.max.y - collider.aabb.min.y;
-        const pushPosZ = collider.aabb.max.z - body.min.z;
-        const pushNegZ = body.max.z - collider.aabb.min.z;
+        const aabb = this.effectiveAabb(collider);
+        if (!overlaps(body, aabb)) continue;
+        const pushPosX = aabb.max.x - body.min.x;
+        const pushNegX = body.max.x - aabb.min.x;
+        const pushPosY = aabb.max.y - body.min.y;
+        const pushNegY = body.max.y - aabb.min.y;
+        const pushPosZ = aabb.max.z - body.min.z;
+        const pushNegZ = body.max.z - aabb.min.z;
         const candidates: { axis: 'x' | 'y' | 'z'; depth: number; sign: number }[] = [
           { axis: 'x', depth: pushPosX, sign: 1 },
           { axis: 'x', depth: pushNegX, sign: -1 },
@@ -493,9 +537,14 @@ export class World {
     char.pos.x += dx;
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
-      if (dx > 0) char.pos.x = Math.min(char.pos.x, collider.aabb.min.x - RADIUS - EPS);
-      else char.pos.x = Math.max(char.pos.x, collider.aabb.max.x + RADIUS + EPS);
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
+      if (this.tryShoveCrate(char, collider, dx, 0, dt)) {
+        Object.assign(body, characterAabb(char.pos, RADIUS, HEIGHT));
+        continue;
+      }
+      if (dx > 0) char.pos.x = Math.min(char.pos.x, aabb.min.x - RADIUS - EPS);
+      else char.pos.x = Math.max(char.pos.x, aabb.max.x + RADIUS + EPS);
       char.vel.x = 0;
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
@@ -508,9 +557,14 @@ export class World {
     char.pos.z += dz;
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
-      if (dz > 0) char.pos.z = Math.min(char.pos.z, collider.aabb.min.z - RADIUS - EPS);
-      else char.pos.z = Math.max(char.pos.z, collider.aabb.max.z + RADIUS + EPS);
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
+      if (this.tryShoveCrate(char, collider, 0, dz, dt)) {
+        Object.assign(body, characterAabb(char.pos, RADIUS, HEIGHT));
+        continue;
+      }
+      if (dz > 0) char.pos.z = Math.min(char.pos.z, aabb.min.z - RADIUS - EPS);
+      else char.pos.z = Math.max(char.pos.z, aabb.max.z + RADIUS + EPS);
       char.vel.z = 0;
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
@@ -524,18 +578,61 @@ export class World {
     const body = characterAabb(char.pos, RADIUS, HEIGHT);
     char.grounded = false;
     for (const collider of this.colliderCache) {
-      if (!overlaps(body, collider.aabb)) continue;
+      const aabb = this.effectiveAabb(collider);
+      if (!overlaps(body, aabb)) continue;
       if (dy < 0) {
-        char.pos.y = Math.max(char.pos.y, collider.aabb.max.y);
+        char.pos.y = Math.max(char.pos.y, aabb.max.y);
         char.vel.y = 0;
         char.grounded = true;
       } else if (dy > 0) {
-        char.pos.y = Math.min(char.pos.y, collider.aabb.min.y - HEIGHT - EPS);
+        char.pos.y = Math.min(char.pos.y, aabb.min.y - HEIGHT - EPS);
         char.vel.y = 0;
       }
       const updated = characterAabb(char.pos, RADIUS, HEIGHT);
       Object.assign(body, updated);
     }
+  }
+
+  /**
+   * The player shoves a grounded crate by walking into it, instead of being
+   * stopped by it. Echo never shoves while walking — it has the push tool.
+   * The crate slides at PUSH_SPEED until it is blocked or leaves support
+   * (pushed off an edge — gravity then takes over). Returns true when the
+   * collider was handled here as a crate, whether or not it moved.
+   */
+  private tryShoveCrate(
+    char: Character,
+    collider: Collider,
+    dx: number,
+    dz: number,
+    dt: number,
+  ): boolean {
+    if (char.id !== 'a') return false;
+    if (collider.kind !== 'crate') return false;
+    const crate = this.crates.get(collider.id ?? '');
+    if (!crate) return false;
+    // Diagonal movement or airborne: treat the crate as a wall.
+    if (Math.abs(dx) > EPS && Math.abs(dz) > EPS) return false;
+    if (!char.grounded) return false;
+    // Square contact only: brushing a corner must not shove the crate sideways.
+    const body = this.crateAabb(crate);
+    if (Math.abs(dx) > EPS && (char.pos.z < body.min.z || char.pos.z > body.max.z)) return false;
+    if (Math.abs(dz) > EPS && (char.pos.x < body.min.x || char.pos.x > body.max.x)) return false;
+    // An airborne or already-falling crate cannot be steered by walking.
+    if (!this.crateSupported(crate)) return false;
+    const stepX = Math.sign(dx) * PUSH_SPEED * dt;
+    const stepZ = Math.sign(dz) * PUSH_SPEED * dt;
+    this.moveCrateXZ(crate, stepX, stepZ, char);
+    this.navDirty = true;
+    // Glue the character to the crate's current face either way: the shove
+    // keeps contact while the crate slides, and stops the character against
+    // the crate's up-to-date position when it is blocked.
+    const face = this.crateAabb(crate);
+    if (stepX > 0) char.pos.x = face.min.x - RADIUS - EPS;
+    else if (stepX < 0) char.pos.x = face.max.x + RADIUS + EPS;
+    else if (stepZ > 0) char.pos.z = face.min.z - RADIUS - EPS;
+    else char.pos.z = face.max.z + RADIUS + EPS;
+    return true;
   }
 
   private crateAabb(crate: CrateState): Aabb {
@@ -549,7 +646,7 @@ export class World {
    * Moves a crate horizontally with the same axis sweep the characters use.
    * Returns false when the crate was blocked by geometry or a character.
    */
-  private moveCrateXZ(crate: CrateState, dx: number, dz: number): boolean {
+  private moveCrateXZ(crate: CrateState, dx: number, dz: number, ignore?: Character): boolean {
     let movedX = true;
     if (Math.abs(dx) >= EPS) {
       crate.pos.x += dx;
@@ -578,8 +675,10 @@ export class World {
         body = this.crateAabb(crate);
       }
     }
-    // Characters stop a moving crate instead of being swept away.
+    // Characters stop a moving crate instead of being swept away. The pushing
+    // character itself is excluded so it can stay in contact while shoving.
     for (const char of [this.a, this.b]) {
+      if (char === ignore) continue;
       if (overlaps(this.crateAabb(crate), characterAabb(char.pos, RADIUS, HEIGHT))) return false;
     }
     return movedX && movedZ;
@@ -889,23 +988,6 @@ export class World {
     return this.anchors.get(id)?.label ?? id;
   }
 
-  private noPathMessage(targetId: string): string {
-    const label = this.anchorLabel(targetId);
-    const closedBridge = this.bridges.get(targetId);
-    if (closedBridge && !closedBridge.open) return `${label}现在是收起的。需要先让机关保持被踩住。`;
-    const closedGate = this.gates.get(targetId);
-    if (closedGate && !closedGate.open) return `${label}现在是关闭的。需要先让机关保持被踩住。`;
-    for (const gateEntry of this.gates.values()) {
-      if (!gateEntry.open)
-        return `没有可行路线到${label}。${gateEntry.label}关着，可能要先打开它。`;
-    }
-    for (const bridgeEntry of this.bridges.values()) {
-      if (!bridgeEntry.open)
-        return `没有可行路线到${label}。${bridgeEntry.label}收起了，可能需要先踩住机关。`;
-    }
-    return `没有可行路线到${label}。可能有缺口、高差或障碍挡住了。`;
-  }
-
   startAction(command: BCommand, signal?: AbortSignal): Promise<ActionResult> {
     if (this.status === 'won') return Promise.reject(new ActionError('WON', '关卡已经结束。'));
     if (this.pending)
@@ -967,7 +1049,17 @@ export class World {
         pending.deadline = this.time + timeout + 1;
         return;
       }
-      case 'move': {
+      case 'walk': {
+        pending.steering = {
+          mode: 'direction',
+          dir: directionVector(command.direction),
+          radius: 0,
+          walkRemaining: clamp(command.seconds, 0.2, 5),
+        };
+        pending.phase = 'act';
+        return;
+      }
+      case 'walk_to': {
         const target = this.anchorPosition(command.target);
         if (!target) throw new ActionError('BAD_TARGET', `目标 ${command.target} 不存在。`);
         const closedBridge = this.bridges.get(command.target);
@@ -978,59 +1070,137 @@ export class World {
         if (closedGate && !closedGate.open) {
           throw new ActionError('NO_PATH', `闸门 ${closedGate.label} 现在是关闭的，过不去。`);
         }
-        const goalRadius = this.exits.has(command.target) ? 0.8 : 1.25;
-        const result = this.getNav().findPath(this.b.pos, target, goalRadius);
-        if (!result) throw new ActionError('NO_PATH', this.noPathMessage(command.target));
-        pending.path = result.path.map((node) => ({ x: node.x + 0.5, y: node.y, z: node.z + 0.5 }));
-        if (pending.path.length === 0) {
-          pending.phase = 'act';
+        const anchorKind = this.anchors.get(command.target)?.kind;
+        const radius = this.exits.has(command.target)
+          ? 0.8
+          : anchorKind === 'plate' || anchorKind === 'hazard'
+            ? 0.45
+            : 1.0;
+        pending.steering = {
+          mode: 'target',
+          targetId: command.target,
+          targetPos: target,
+          radius,
+        };
+        pending.phase = 'act';
+        return;
+      }
+      case 'jump': {
+        const dir = command.direction ? directionVector(command.direction) : undefined;
+        if (dir) {
+          pending.steering = { mode: 'direction', dir, radius: 0 };
         }
+        this.b.jumpBuffer = 0.12;
+        pending.jumping = {};
+        pending.phase = 'act';
         return;
       }
       case 'use': {
         const lever = this.levers.get(command.target);
         if (!lever) throw new ActionError('BAD_TARGET', `${command.target} 不是可以操作的拉杆。`);
         const target = centerXZ(lever.aabb);
-        const result = this.getNav().findPath(this.b.pos, target, 1.6);
-        if (!result) throw new ActionError('NO_PATH', this.noPathMessage(command.target));
-        pending.path = result.path.map((node) => ({ x: node.x + 0.5, y: node.y, z: node.z + 0.5 }));
-        pending.phase = 'path';
+        pending.steering = {
+          mode: 'target',
+          targetId: command.target,
+          targetPos: target,
+          radius: 1.6,
+        };
+        pending.phase = 'act';
         return;
       }
       case 'push': {
         const box = this.crates.get(command.box);
         if (!box) throw new ActionError('BAD_TARGET', `${command.box} 不是可以推动的箱子。`);
-        const to = this.anchorPosition(command.to);
-        if (!to) throw new ActionError('BAD_TARGET', `目标 ${command.to} 不存在。`);
-        const rawX = to.x - box.pos.x;
-        const rawZ = to.z - box.pos.z;
-        let dir: Vec3;
-        if (Math.abs(rawZ) >= Math.abs(rawX)) dir = { x: 0, y: 0, z: rawZ >= 0 ? 1 : -1 };
-        else dir = { x: rawX >= 0 ? 1 : -1, y: 0, z: 0 };
-        const distance =
-          to.y < box.pos.y - 0.4
-            ? 1.8
-            : clamp(Math.max(Math.abs(rawX), Math.abs(rawZ)) - 0.6, 0.6, 3.2);
-        const pushPos = {
-          x: box.pos.x - dir.x * (box.size.x / 2 + RADIUS + 0.25),
-          y: box.pos.y,
-          z: box.pos.z - dir.z * (box.size.z / 2 + RADIUS + 0.25),
-        };
-        const result = this.getNav().findPath(this.b.pos, pushPos, 0.9);
-        if (!result) throw new ActionError('NO_PATH', `没有位置可以推动${box.label}。`);
-        pending.path = result.path.map((node) => ({ x: node.x + 0.5, y: node.y, z: node.z + 0.5 }));
+        const dir = directionVector(command.direction);
+        const pushPos = pushStandPosition(box, dir);
+        // Reaching behind the crate may require stepping around it; use the
+        // nav grid only for this short approach (targets stay steering walks).
+        const navResult = this.getNav().findPath(this.b.pos, pushPos, 0.9);
+        if (!navResult) throw new ActionError('NO_PATH', `没有位置可以推动${box.label}。`);
+        pending.path = navResult.path.map((node) => ({
+          x: node.x + 0.5,
+          y: node.y,
+          z: node.z + 0.5,
+        }));
+        pending.phase = pending.path.length === 0 ? 'act' : 'path';
         pending.push = {
           boxId: box.id,
-          toId: command.to,
+          direction: command.direction,
           dir,
-          distance,
           phase: 'approach',
           startedAt: this.time,
+          startY: box.pos.y,
         };
-        pending.phase = 'path';
         return;
       }
     }
+  }
+
+  /**
+   * Edge guard: samples the ground height ahead of b along its heading.
+   * Returns a human reason when walking on would drop more than EDGE_DROP,
+   * or undefined when the ground ahead is walkable.
+   */
+  private edgeGuardAhead(): string | undefined {
+    const ahead = 0.55 + RADIUS;
+    const dx = this.b.pos.x + this.steerHeading().x * ahead;
+    const dz = this.b.pos.z + this.steerHeading().z * ahead;
+    const support = this.supportHeightAt(dx, this.b.pos.y, dz);
+    if (support === undefined) {
+      // Nothing solid ahead within tolerance: open gap or a real cliff.
+      return this.hasSupportUnder(this.b.pos)
+        ? '前面是边缘，没有落脚的地方，再走就要掉下去了。'
+        : undefined;
+    }
+    const drop = this.b.pos.y - support;
+    if (drop > EDGE_DROP) return '前面是边缘，再走就要掉下去了。';
+    if (support - this.b.pos.y > 0.65) return undefined; // wall handling covers this
+    return undefined;
+  }
+
+  private steerHeading(): Vec3 {
+    const pending = this.pending;
+    const steering = pending?.steering;
+    if (!steering) return { x: 0, y: 0, z: 0 };
+    if (steering.mode === 'direction' && steering.dir) return steering.dir;
+    if (steering.mode === 'target' && steering.targetPos) {
+      const target =
+        steering.targetId === 'player'
+          ? this.a.pos
+          : steering.targetId
+            ? (this.anchorPosition(steering.targetId) ?? steering.targetPos)
+            : steering.targetPos;
+      const dx = target.x - this.b.pos.x;
+      const dz = target.z - this.b.pos.z;
+      const length = Math.hypot(dx, dz);
+      if (length < 1e-4) return { x: 0, y: 0, z: 0 };
+      return { x: dx / length, y: 0, z: dz / length };
+    }
+    return { x: 0, y: 0, z: 0 };
+  }
+
+  /** Highest walkable surface top within y tolerance at (x, z), or undefined. */
+  private supportHeightAt(x: number, y: number, z: number): number | undefined {
+    let best: number | undefined;
+    for (const collider of this.colliderCache) {
+      if (collider.kind === 'gate' && !this.gates.get(collider.id ?? '')?.open) continue;
+      if (collider.kind === 'gate') continue;
+      const top = collider.aabb.max.y;
+      if (Math.abs(top - y) > 1.3) continue;
+      if (
+        x >= collider.aabb.min.x - 0.1 &&
+        x <= collider.aabb.max.x + 0.1 &&
+        z >= collider.aabb.min.z - 0.1 &&
+        z <= collider.aabb.max.z + 0.1
+      ) {
+        if (best === undefined || top > best) best = top;
+      }
+    }
+    return best;
+  }
+
+  private hasSupportUnder(pos: Vec3): boolean {
+    return this.supportHeightAt(pos.x, pos.y, pos.z) !== undefined;
   }
 
   private conditionTargetExists(condition: WaitCondition): boolean {
@@ -1062,6 +1232,8 @@ export class World {
     }
 
     if (pending.phase === 'path') {
+      // Path following is used only for the short approach behind a crate
+      // before pushing it; everything else is steering.
       const done = this.followPath(pending);
       if (done) {
         pending.phase = 'act';
@@ -1070,10 +1242,84 @@ export class World {
       }
     }
 
-    if (command.kind === 'move') {
-      this.finishAction(`已到达${this.anchorLabel(command.target)}附近。`);
+    if (command.kind === 'jump' && pending.jumping) {
+      if (this.b.respawnCooldown > 0 && this.time - pending.startedAt > 0.5) {
+        this.failAction('FELL', '跳跃后掉下去了，回到了安全位置。');
+        return;
+      }
+      if (!this.b.grounded) {
+        pending.jumping.airborneAt ??= this.time;
+        if (pending.steering) {
+          const heading = this.steerHeading();
+          this.actionInput = { x: heading.x, z: heading.z, jump: false };
+        }
+        return;
+      }
+      if (pending.jumping.airborneAt === undefined) {
+        // Jump buffered but not yet airborne; give physics a moment.
+        if (this.time - pending.startedAt > 1.2) {
+          this.failAction('BLOCKED', '跳不起来，可能头顶或脚下有东西挡着。');
+        }
+        return;
+      }
+      const dirName = (command as { direction?: Direction }).direction;
+      this.finishAction(dirName ? `朝${dirName}跳了一步，落地了。` : '跳了一下，落地了。');
       return;
     }
+
+    if (pending.steering) {
+      const steering = pending.steering;
+      if (steering.mode === 'target' && steering.targetPos) {
+        const target = this.resolveSteerTarget(steering);
+        steering.targetPos = cloneVec(target);
+        const arrived = distanceXZ(this.b.pos, target) <= steering.radius;
+        if (arrived) {
+          if (command.kind === 'push') {
+            pending.steering = undefined;
+            pending.phase = 'act';
+            return this.updateBAction(0);
+          }
+          const label = steering.targetId ? this.anchorLabel(steering.targetId) : '目标';
+          this.finishAction(`走到了${label}附近。`);
+          return;
+        }
+      }
+      // Time budget for direction walks (and jump run-ups).
+      if (steering.mode === 'direction' && steering.walkRemaining !== undefined) {
+        steering.walkRemaining -= dt;
+        if (steering.walkRemaining <= 0) {
+          this.finishAction(
+            `朝${(command as { direction?: Direction }).direction ?? '前'}走了一段，停下来了。`,
+          );
+          return;
+        }
+      }
+      // Blocked: no progress for a while.
+      const now = this.time;
+      if (distanceXZ(this.b.pos, pending.lastPos) > 0.015) {
+        pending.lastPos = cloneVec(this.b.pos);
+        pending.lastMoveAt = now;
+      } else if (now - pending.lastMoveAt > STUCK_SECONDS && this.b.grounded) {
+        const where =
+          steering.mode === 'target' && steering.targetId
+            ? this.anchorLabel(steering.targetId)
+            : '前方';
+        this.failAction('BLOCKED', `朝${where}走被挡住了，走不过去。`);
+        return;
+      }
+      // Edge guard: stop before walking off a cliff (not during jumps).
+      if (this.b.grounded && command.kind !== 'jump') {
+        const edgeReason = this.edgeGuardAhead();
+        if (edgeReason) {
+          this.finishAction(`${edgeReason}先停下来了。`);
+          return;
+        }
+      }
+      const heading = this.steerHeading();
+      this.actionInput = { x: heading.x, z: heading.z, jump: false };
+      return;
+    }
+
     if (command.kind === 'use') {
       const lever = this.levers.get(command.target);
       if (!lever) {
@@ -1098,28 +1344,76 @@ export class World {
         return;
       }
       if (push.phase === 'approach') {
-        box.tween = {
-          fromX: box.pos.x,
-          fromZ: box.pos.z,
-          toX: box.pos.x + push.dir.x * push.distance,
-          toZ: box.pos.z + push.dir.z * push.distance,
-          elapsed: 0,
-          duration: 0.9,
-        };
+        const pushPos = pushStandPosition(box, push.dir);
+        if (distanceXZ(this.b.pos, pushPos) > 1.1) {
+          this.failAction('BLOCKED', `没有走到能推动${box.label}的位置。`);
+          return;
+        }
         push.phase = 'push';
         this.b.facing = Math.atan2(push.dir.x, push.dir.z);
-        this.navDirty = true;
         return;
       }
-      if (box.tween) return;
-      if (!box.grounded && this.time - push.startedAt < 3) return;
-      if (box.pushBlocked) {
-        box.pushBlocked = false;
-        this.failAction('BLOCKED', `箱子被挡住了，推不到${this.anchorLabel(command.to)}。`);
+      // Pushing: drive the crate along dir until it is blocked or has left
+      // support (pushed off an edge). Once it has dropped, stop driving it and
+      // only wait for gravity to settle the fall.
+      // Once the crate has left support it is never driven again this push:
+      // stop and wait for gravity to settle it below. (Without this, a crate
+      // that lands and regains support would be shoved across the ground.)
+      const unsupported = !this.crateSupported(box);
+      if (push.droppedAt === undefined && unsupported) push.droppedAt = this.time;
+      if (push.droppedAt !== undefined) {
+        const settled = this.crateSupported(box) && box.pos.y < push.startY - 0.4;
+        if (settled || this.time - push.droppedAt > 3) {
+          const dropped = box.pos.y < push.startY - 0.4;
+          this.finishAction(
+            dropped
+              ? `把${box.label}朝${push.direction}推了出去。`
+              : `${box.label}没有站稳，没能推出去。`,
+          );
+        }
         return;
       }
-      this.finishAction(`把${box.label}推向了${this.anchorLabel(command.to)}。`);
+      const dx = push.dir.x * PUSH_SPEED * dt;
+      const dz = push.dir.z * PUSH_SPEED * dt;
+      const moved = this.moveCrateXZ(box, dx, dz);
+      this.b.facing = Math.atan2(push.dir.x, push.dir.z);
+      this.navDirty = true;
+      if (!moved) {
+        this.finishAction(`${box.label}被挡住了，推不动了。`);
+        return;
+      }
+      // Cap the continuous push at ~4 seconds of pushing.
+      if (this.time - (push.startedAt ?? this.time) > 4) {
+        this.finishAction(`把${box.label}朝${push.direction}推了一段。`);
+        return;
+      }
+      return;
     }
+  }
+
+  private resolveSteerTarget(steering: NonNullable<PendingAction['steering']>): Vec3 {
+    if (steering.mode !== 'target') return cloneVec(this.b.pos);
+    if (steering.targetId === 'player') return cloneVec(this.a.pos);
+    if (steering.targetId) return this.anchorPosition(steering.targetId) ?? cloneVec(this.b.pos);
+    return cloneVec(steering.targetPos ?? this.b.pos);
+  }
+
+  /** Whether the crate currently rests on any collider below it. */
+  private crateSupported(crate: CrateState): boolean {
+    const body = this.crateAabb(crate);
+    for (const collider of this.colliderCache) {
+      if (collider.kind === 'crate' && collider.id === crate.id) continue;
+      if (
+        Math.abs(collider.aabb.max.y - body.min.y) < 0.08 &&
+        body.min.x < collider.aabb.max.x &&
+        body.max.x > collider.aabb.min.x &&
+        body.min.z < collider.aabb.max.z &&
+        body.max.z > collider.aabb.min.z
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private followPath(pending: PendingAction): boolean {
@@ -1143,16 +1437,7 @@ export class World {
       pending.lastPos = cloneVec(this.b.pos);
       pending.lastMoveAt = now;
     } else if (now - pending.lastMoveAt > 1.3) {
-      const stuckTarget =
-        pending.command.kind === 'move' || pending.command.kind === 'use'
-          ? pending.command.target
-          : pending.command.kind === 'push'
-            ? pending.command.to
-            : '';
-      this.failAction(
-        'STUCK',
-        `${COMPANION_NAME} 在前往${this.anchorLabel(stuckTarget)}的路上被挡住了。`,
-      );
+      this.failAction('STUCK', `${COMPANION_NAME} 在绕到箱子背面的路上被挡住了。`);
       return false;
     }
     this.actionInput = { x: dx / distance, z: dz / distance, jump: false };

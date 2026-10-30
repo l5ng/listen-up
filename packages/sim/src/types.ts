@@ -153,10 +153,49 @@ export type WaitCondition =
     }
   | { kind: 'hazard_state'; target: string; state: HazardStateCondition };
 
+/** 八方位世界方向，与观察输出一致；约定 x 轴正向为东、z 轴正向为南。 */
+export type Direction = '北' | '东北' | '东' | '东南' | '南' | '西南' | '西' | '西北';
+
+export const DIRECTIONS: readonly Direction[] = [
+  '北',
+  '东北',
+  '东',
+  '东南',
+  '南',
+  '西南',
+  '西',
+  '西北',
+];
+
+/** 把世界方位换算成水平单位向量（x=东、z=南）。 */
+export function directionVector(direction: Direction): Vec3 {
+  const root = Math.SQRT1_2;
+  switch (direction) {
+    case '北':
+      return { x: 0, y: 0, z: -1 };
+    case '东北':
+      return { x: root, y: 0, z: -root };
+    case '东':
+      return { x: 1, y: 0, z: 0 };
+    case '东南':
+      return { x: root, y: 0, z: root };
+    case '南':
+      return { x: 0, y: 0, z: 1 };
+    case '西南':
+      return { x: -root, y: 0, z: root };
+    case '西':
+      return { x: -1, y: 0, z: 0 };
+    case '西北':
+      return { x: -root, y: 0, z: -root };
+  }
+}
+
 export type BCommand =
-  | { kind: 'move'; target: string }
+  | { kind: 'walk'; direction: Direction; seconds: number }
+  | { kind: 'walk_to'; target: string }
+  | { kind: 'jump'; direction?: Direction }
   | { kind: 'use'; target: string }
-  | { kind: 'push'; box: string; to: string }
+  | { kind: 'push'; box: string; direction: Direction }
   | { kind: 'wait'; seconds: number }
   | { kind: 'wait_until'; condition: WaitCondition; timeoutSeconds?: number };
 
