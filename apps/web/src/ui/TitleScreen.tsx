@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { copy } from '../copy';
+import heroArt from '../assets/hero.jpg';
 
 interface TitleScreenProps {
   modelReady: boolean;
@@ -38,7 +39,7 @@ export function TitleScreen({
 }: TitleScreenProps) {
   return (
     <div className="title-screen">
-      <img className="title-art" src="/hero.jpg" alt="" aria-hidden="true" />
+      <img className="title-art" src={heroArt} alt="" aria-hidden="true" />
 
       <nav className="title-topbar" aria-label="首页导航">
         <button

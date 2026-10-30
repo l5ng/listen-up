@@ -36,6 +36,8 @@ interface GameScreenProps {
   onComplete: (levelId: string) => void;
   onNext: () => void;
   reduceMotion: boolean;
+  /** True while a parent-level modal (settings/credits/prologue) is open. */
+  suspended: boolean;
 }
 
 const examples: Record<string, string> = {
@@ -89,6 +91,7 @@ export function GameScreen({
   onComplete,
   onNext,
   reduceMotion,
+  suspended,
 }: GameScreenProps) {
   const createSession = useCallback(
     () =>
@@ -135,8 +138,10 @@ export function GameScreen({
   }, [session]);
 
   useEffect(() => {
-    session.setPaused(paused || introOpen || hintOpen || (settings.inputPausesWorld && typing));
-  }, [session, paused, introOpen, hintOpen, typing, settings.inputPausesWorld]);
+    session.setPaused(
+      paused || suspended || introOpen || hintOpen || (settings.inputPausesWorld && typing),
+    );
+  }, [session, paused, suspended, introOpen, hintOpen, typing, settings.inputPausesWorld]);
 
   useEffect(() => {
     if (ui.status === 'won' && !reported.current) {
@@ -154,7 +159,8 @@ export function GameScreen({
     };
   }, [notice]);
 
-  const canControl = !paused && !introOpen && !typing && ui.status === 'playing';
+  const canControl =
+    !paused && !suspended && !introOpen && !hintOpen && !typing && ui.status === 'playing';
 
   const send = (value?: string) => {
     const clean = (value ?? text).trim();
@@ -174,6 +180,11 @@ export function GameScreen({
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      // A parent-level modal is open: it owns the keyboard (e.g. Escape closes
+      // the settings dialog), and the paused world must not react to hotkeys.
+      if (suspended) return;
+      // Ignore plain game hotkeys while the user is chord-ing browser shortcuts.
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const active = document.activeElement;
       const inText = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement;
       if (event.key === 'Escape') {
@@ -210,23 +221,12 @@ export function GameScreen({
         textareaRef.current?.focus();
         return;
       }
-      if (
-        (event.key === 'h' || event.key === 'H') &&
-        !inText &&
-        !paused &&
-        !introOpen &&
-        ui.status === 'playing'
-      ) {
+      if (event.code === 'KeyH' && !inText && !paused && !introOpen && ui.status === 'playing') {
         event.preventDefault();
         setHintOpen((value) => !value);
         return;
       }
-      if (
-        (event.key === 'p' || event.key === 'P') &&
-        !inText &&
-        !introOpen &&
-        ui.status === 'playing'
-      ) {
+      if (event.code === 'KeyP' && !inText && !introOpen && ui.status === 'playing') {
         setPaused((value) => !value);
         return;
       }
@@ -237,7 +237,7 @@ export function GameScreen({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [canControl, hintOpen, introOpen, paused, session, traceOpen, ui.status]);
+  }, [canControl, hintOpen, introOpen, paused, session, suspended, traceOpen, ui.status]);
 
   const restart = () => {
     const next = createSession();
@@ -303,7 +303,6 @@ export function GameScreen({
           <button
             className="btn icon-only ghost"
             onClick={() => {
-              setPaused(true);
               onOpenSettings();
             }}
             aria-label="设置"
@@ -391,7 +390,6 @@ export function GameScreen({
               className="btn small ghost"
               type="button"
               onClick={() => {
-                setPaused(true);
                 onOpenSettings();
               }}
             >
@@ -488,7 +486,6 @@ export function GameScreen({
                 className="btn ghost"
                 type="button"
                 onClick={() => {
-                  setPaused(true);
                   onOpenSettings();
                 }}
               >

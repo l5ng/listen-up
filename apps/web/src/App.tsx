@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronLeft, Play, Settings } from 'lucide-react';
 import { COMPANION_NAME, levels, PLAYER_NAME } from '@listen-up/sim';
 import { copy } from './copy';
@@ -44,11 +44,13 @@ export function App() {
   const completeLevel = (levelId: string) => {
     setProgress((current) => {
       if (current.completed.includes(levelId)) return current;
-      const next = { completed: [...current.completed, levelId], lastLevel: levelId };
-      saveProgress(next);
-      return next;
+      return { completed: [...current.completed, levelId], lastLevel: levelId };
     });
   };
+
+  useEffect(() => {
+    saveProgress(progress);
+  }, [progress]);
 
   const nextLevel = () => {
     if (!selected) return;
@@ -168,6 +170,7 @@ export function App() {
             onComplete={completeLevel}
             onNext={nextLevel}
             reduceMotion={settings.reduceMotion}
+            suspended={settingsOpen || creditsOpen || prologueOpen}
           />
         ) : null}
       </div>

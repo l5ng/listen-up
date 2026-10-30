@@ -25,6 +25,56 @@ test('settings save bar stays visible without scrolling', async ({ page }) => {
   await expect(page.locator('.modal')).toHaveCount(0);
 });
 
+test('settings modal suspends the game and Escape closes it without unpausing', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'listen-up.settings.v1',
+      JSON.stringify({
+        provider: {
+          baseUrl: 'http://127.0.0.1:5173/v1',
+          apiKey: '',
+          model: 'mock-model',
+          temperature: 0.4,
+        },
+        inputPausesWorld: false,
+        reduceMotion: false,
+      }),
+    );
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '关卡', exact: true }).click();
+  await page.getByRole('button', { name: '进入关卡' }).first().click();
+  await page.getByRole('button', { name: '开始', exact: true }).click();
+
+  // World is running before the modal opens.
+  await expect
+    .poll(async () => page.evaluate(() => window.listenupSession?.getUiSnapshot().paused ?? null))
+    .toBe(false);
+
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('.modal')).toHaveCount(1);
+
+  // While the modal is open the world must be suspended...
+  await expect
+    .poll(async () => page.evaluate(() => window.listenupSession?.getUiSnapshot().paused ?? null))
+    .toBe(true);
+
+  // ...and the P hotkey must not un-pause behind it.
+  await page.keyboard.press('p');
+  await expect(await page.evaluate(() => window.listenupSession?.getUiSnapshot().paused)).toBe(
+    true,
+  );
+
+  // Escape closes the modal (instead of toggling the game pause).
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.modal')).toHaveCount(0);
+  await expect(await page.evaluate(() => window.listenupSession?.getUiSnapshot().paused)).toBe(
+    false,
+  );
+});
+
 test('OpenAI preset uses Responses and the choice persists', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '连接模型', exact: true }).click();

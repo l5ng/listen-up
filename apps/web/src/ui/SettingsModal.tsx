@@ -171,6 +171,12 @@ export function SettingsModal({
         aria-labelledby="settings-title"
         ref={modalRef}
         tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !event.defaultPrevented) {
+            event.preventDefault();
+            onClose();
+          }
+        }}
       >
         <div className="settings-scroll" ref={scrollRef}>
           <div className="row spread">
