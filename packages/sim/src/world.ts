@@ -39,6 +39,8 @@ const EXIT_TRIGGER_RADIUS = EXIT_ZONE_RADIUS + RADIUS;
 const EXIT_ZONE_LEVEL_TOLERANCE = 1.2;
 const MAX_STEP_TIME = 60;
 const EPS = 1e-5;
+/** Horizontal slack for treating a character as standing on a plate-sized AABB. */
+const PLATE_MARGIN = 0.12;
 
 interface Character {
   id: 'a' | 'b';
@@ -62,6 +64,7 @@ interface CrateState {
   initial: Vec3;
   vy: number;
   grounded: boolean;
+  pushBlocked?: boolean;
   tween?: {
     fromX: number;
     fromZ: number;
@@ -300,10 +303,7 @@ export class World {
         id: prop.id,
         label: prop.label,
         aliases: prop.aliases ?? [],
-        pos:
-          prop.kind === 'crate'
-            ? { x: prop.at.x + size.x / 2, y: prop.at.y, z: prop.at.z + size.z / 2 }
-            : { x: prop.at.x + size.x / 2, y: prop.at.y, z: prop.at.z + size.z / 2 },
+        pos: { x: prop.at.x + size.x / 2, y: prop.at.y, z: prop.at.z + size.z / 2 },
         kind: prop.kind,
       });
     }
@@ -427,6 +427,7 @@ export class World {
     char.vel.y -= GRAVITY * dt;
     if (char.vel.y < -24) char.vel.y = -24;
 
+    this.depenetrateCharacter(char);
     this.moveCharacterX(char, dt);
     this.moveCharacterZ(char, dt);
     this.moveCharacterY(char, dt);
@@ -435,6 +436,54 @@ export class World {
     if (char.speed > 0.2) char.facing = Math.atan2(char.vel.x, char.vel.z);
     if (char.pos.y < -8) {
       this.respawnCharacter(char, '掉出了浮岛。');
+    }
+  }
+
+  /**
+   * Pushes a character out of any collider it is embedded in along the axis
+   * of least penetration, instead of letting the next movement step eject it
+   * along its travel direction (which let characters pass through closed gates).
+   */
+  private depenetrateCharacter(char: Character): void {
+    for (let round = 0; round < 3; round += 1) {
+      const body = characterAabb(char.pos, RADIUS, HEIGHT);
+      let best: { axis: 'x' | 'y' | 'z'; depth: number; sign: number } | undefined;
+      for (const collider of this.colliderCache) {
+        if (!overlaps(body, collider.aabb)) continue;
+        const pushPosX = collider.aabb.max.x - body.min.x;
+        const pushNegX = body.max.x - collider.aabb.min.x;
+        const pushPosY = collider.aabb.max.y - body.min.y;
+        const pushNegY = body.max.y - collider.aabb.min.y;
+        const pushPosZ = collider.aabb.max.z - body.min.z;
+        const pushNegZ = body.max.z - collider.aabb.min.z;
+        const candidates: { axis: 'x' | 'y' | 'z'; depth: number; sign: number }[] = [
+          { axis: 'x', depth: pushPosX, sign: 1 },
+          { axis: 'x', depth: pushNegX, sign: -1 },
+          { axis: 'y', depth: pushPosY, sign: 1 },
+          { axis: 'y', depth: pushNegY, sign: -1 },
+          { axis: 'z', depth: pushPosZ, sign: 1 },
+          { axis: 'z', depth: pushNegZ, sign: -1 },
+        ];
+        for (const candidate of candidates) {
+          if (!best || candidate.depth < best.depth) best = candidate;
+        }
+      }
+      if (!best || best.depth <= 0) return;
+      if (best.axis === 'x') {
+        char.pos.x += best.sign * (best.depth + EPS);
+        char.vel.x = 0;
+      } else if (best.axis === 'y') {
+        char.pos.y += best.sign * (best.depth + EPS);
+        if (best.sign < 0) {
+          char.vel.y = 0;
+          char.grounded = true;
+        } else {
+          char.vel.y = 0;
+        }
+      } else {
+        char.pos.z += best.sign * (best.depth + EPS);
+        char.vel.z = 0;
+      }
     }
   }
 
@@ -489,17 +538,66 @@ export class World {
     }
   }
 
+  private crateAabb(crate: CrateState): Aabb {
+    return aabbFromMinSize(
+      { x: crate.pos.x - crate.size.x / 2, y: crate.pos.y, z: crate.pos.z - crate.size.z / 2 },
+      crate.size,
+    );
+  }
+
+  /**
+   * Moves a crate horizontally with the same axis sweep the characters use.
+   * Returns false when the crate was blocked by geometry or a character.
+   */
+  private moveCrateXZ(crate: CrateState, dx: number, dz: number): boolean {
+    let movedX = true;
+    if (Math.abs(dx) >= EPS) {
+      crate.pos.x += dx;
+      let body = this.crateAabb(crate);
+      for (const collider of this.colliderCache) {
+        if (collider.kind === 'crate' && collider.id === crate.id) continue;
+        if (!overlaps(body, collider.aabb)) continue;
+        if (dx > 0)
+          crate.pos.x = Math.min(crate.pos.x, collider.aabb.min.x - crate.size.x / 2 - EPS);
+        else crate.pos.x = Math.max(crate.pos.x, collider.aabb.max.x + crate.size.x / 2 + EPS);
+        movedX = false;
+        body = this.crateAabb(crate);
+      }
+    }
+    let movedZ = true;
+    if (Math.abs(dz) >= EPS) {
+      crate.pos.z += dz;
+      let body = this.crateAabb(crate);
+      for (const collider of this.colliderCache) {
+        if (collider.kind === 'crate' && collider.id === crate.id) continue;
+        if (!overlaps(body, collider.aabb)) continue;
+        if (dz > 0)
+          crate.pos.z = Math.min(crate.pos.z, collider.aabb.min.z - crate.size.z / 2 - EPS);
+        else crate.pos.z = Math.max(crate.pos.z, collider.aabb.max.z + crate.size.z / 2 + EPS);
+        movedZ = false;
+        body = this.crateAabb(crate);
+      }
+    }
+    // Characters stop a moving crate instead of being swept away.
+    for (const char of [this.a, this.b]) {
+      if (overlaps(this.crateAabb(crate), characterAabb(char.pos, RADIUS, HEIGHT))) return false;
+    }
+    return movedX && movedZ;
+  }
+
   private updateCrates(dt: number): void {
     for (const crate of this.crates.values()) {
       if (crate.tween) {
         crate.tween.elapsed += dt;
         const t = Math.min(1, crate.tween.elapsed / crate.tween.duration);
-        crate.pos.x = crate.tween.fromX + (crate.tween.toX - crate.tween.fromX) * t;
-        crate.pos.z = crate.tween.fromZ + (crate.tween.toZ - crate.tween.fromZ) * t;
-        if (t >= 1) {
+        const targetX = crate.tween.fromX + (crate.tween.toX - crate.tween.fromX) * t;
+        const targetZ = crate.tween.fromZ + (crate.tween.toZ - crate.tween.fromZ) * t;
+        const moved = this.moveCrateXZ(crate, targetX - crate.pos.x, targetZ - crate.pos.z);
+        if (t >= 1 || !moved) {
           crate.tween = undefined;
           crate.vy = 0;
           crate.grounded = false;
+          if (!moved) crate.pushBlocked = true;
         }
         this.navDirty = true;
         continue;
@@ -536,8 +634,18 @@ export class World {
         crate.vy = 0;
         crate.grounded = false;
       }
-      if (dy !== 0) this.navDirty = true;
+      this.navDirty = true;
     }
+  }
+
+  /** True when any character or crate body overlaps the given AABB. */
+  private aabbOccupied(aabb: Aabb): boolean {
+    if (overlaps(characterAabb(this.a.pos, RADIUS, HEIGHT), aabb)) return true;
+    if (overlaps(characterAabb(this.b.pos, RADIUS, HEIGHT), aabb)) return true;
+    for (const crate of this.crates.values()) {
+      if (overlaps(this.crateAabb(crate), aabb)) return true;
+    }
+    return false;
   }
 
   private updateLinks(): void {
@@ -559,7 +667,9 @@ export class World {
 
     let changed = false;
     for (const gate of this.gates.values()) {
-      const next = openGates.get(gate.id) ?? gate.initialOpen;
+      let next = openGates.get(gate.id) ?? gate.initialOpen;
+      // A gate must not close onto a character or crate standing in its frame.
+      if (!next && gate.open && this.aabbOccupied(gate.aabb)) next = true;
       if (next !== gate.open) {
         gate.open = next;
         changed = true;
@@ -573,7 +683,9 @@ export class World {
       }
     }
     for (const bridge of this.bridges.values()) {
-      const next = openBridges.get(bridge.id) ?? bridge.initialOpen;
+      let next = openBridges.get(bridge.id) ?? bridge.initialOpen;
+      // A bridge must not materialize inside a character or crate.
+      if (next && !bridge.open && this.aabbOccupied(bridge.aabb)) next = false;
       if (next !== bridge.open) {
         bridge.open = next;
         changed = true;
@@ -591,7 +703,7 @@ export class World {
 
   private isPlatePressed(plate: PlateState): boolean {
     for (const char of [this.a, this.b]) {
-      if (this.isCharacterOnAabb(char, plate.aabb, 0.12)) return true;
+      if (this.isCharacterOnAabb(char, plate.aabb, PLATE_MARGIN)) return true;
     }
     for (const crate of this.crates.values()) {
       const body = aabbFromMinSize(
@@ -922,8 +1034,6 @@ export class World {
   }
 
   private conditionTargetExists(condition: WaitCondition): boolean {
-    if (condition.kind === 'player_near')
-      return this.anchorPosition(condition.target) !== undefined;
     return this.anchorPosition(condition.target) !== undefined;
   }
 
@@ -1003,6 +1113,11 @@ export class World {
       }
       if (box.tween) return;
       if (!box.grounded && this.time - push.startedAt < 3) return;
+      if (box.pushBlocked) {
+        box.pushBlocked = false;
+        this.failAction('BLOCKED', `箱子被挡住了，推不到${this.anchorLabel(command.to)}。`);
+        return;
+      }
       this.finishAction(`把${box.label}推向了${this.anchorLabel(command.to)}。`);
     }
   }
@@ -1028,9 +1143,15 @@ export class World {
       pending.lastPos = cloneVec(this.b.pos);
       pending.lastMoveAt = now;
     } else if (now - pending.lastMoveAt > 1.3) {
+      const stuckTarget =
+        pending.command.kind === 'move' || pending.command.kind === 'use'
+          ? pending.command.target
+          : pending.command.kind === 'push'
+            ? pending.command.to
+            : '';
       this.failAction(
         'STUCK',
-        `${COMPANION_NAME} 在前往${this.anchorLabel(pending.command.kind === 'move' ? pending.command.target : '')}的路上被挡住了。`,
+        `${COMPANION_NAME} 在前往${this.anchorLabel(stuckTarget)}的路上被挡住了。`,
       );
       return false;
     }
@@ -1045,7 +1166,7 @@ export class World {
       case 'player_on': {
         const prop = this.propsById.get(condition.target);
         if (prop && (prop.kind === 'plate' || prop.kind === 'gate' || prop.kind === 'bridge')) {
-          return this.isCharacterOnAabb(this.a, propAabb(prop), 0.15);
+          return this.isCharacterOnAabb(this.a, propAabb(prop), PLATE_MARGIN);
         }
         return distanceXZ(this.a.pos, target) <= 0.9 && Math.abs(this.a.pos.y - target.y) <= 1.0;
       }

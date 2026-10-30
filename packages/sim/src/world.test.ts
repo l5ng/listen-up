@@ -104,6 +104,64 @@ describe('world', () => {
     expect(world.status).toBe('won');
   });
 
+  it('keeps the gate open while a character stands inside its frame', async () => {
+    const world = new World(getLevel('sky-03'));
+    // Echo stands on plate_red so the gate wants to stay open, then walks off;
+    // Dash is inside the gate frame at x ∈ [8, 8.4], z = 4.
+    await advance(world, world.startAction({ kind: 'move', target: 'plate_red' }));
+    for (let index = 0; index < 10; index += 1) world.step(1 / 60);
+    expect(world.getSnapshot().props.find((prop) => prop.id === 'gate_1')?.open).toBe(true);
+
+    world.a.pos = { x: 8.2, y: 0.02, z: 4 };
+    // Echo leaves the plate → gate wants to close but Dash blocks it.
+    world.b.pos = { x: 15, y: 0.02, z: 7 };
+    for (let index = 0; index < 30; index += 1) world.step(1 / 60);
+    expect(world.getSnapshot().props.find((prop) => prop.id === 'gate_1')?.open).toBe(true);
+    expect(world.a.pos.y).toBeLessThan(0.1); // not teleported to the gate top
+  });
+
+  it('does not let an embedded character walk through the closed gate', () => {
+    const world = new World(getLevel('sky-03'));
+    // Reproduce the review experiment: embed Dash inside the closed gate and walk east.
+    world.a.pos = { x: 8.2, y: 0.02, z: 4 };
+    for (let index = 0; index < 60; index += 1) {
+      world.setPlayerInput({ x: 1, z: 0, jump: false });
+      world.step(1 / 60);
+    }
+    expect(world.a.pos.x).toBeLessThan(8 - 0.34); // ejected to the west face, not past 8.4
+    expect(world.a.pos.x).toBeGreaterThan(6);
+    expect(world.a.pos.y).toBeLessThan(0.5);
+  });
+
+  it('fails a blocked push when a character stands in the crate path', async () => {
+    const world = new World(getLevel('sky-01'));
+    // First push drops the crate into the yard at ground level.
+    await advance(world, world.startAction({ kind: 'push', box: 'crate_1', to: 'yard_a' }));
+    const landed = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
+    expect(landed).toBeDefined();
+    if (!landed) return;
+    expect(landed.pos.y).toBe(0);
+
+    // Push again toward bridge_edge: direction is +x along the ground, target
+    // x = landed.x + 0.6. Dash stands in the path so the crate tween must stop
+    // instead of sweeping him away.
+    world.a.pos = { x: landed.pos.x + 1.3, y: 0.02, z: landed.pos.z };
+    world.b.pos = { x: landed.pos.x - 1.5, y: 0.02, z: landed.pos.z };
+    const action = world.startAction({ kind: 'push', box: 'crate_1', to: 'bridge_edge' });
+    const failure = await advance(world, action).then(
+      () => undefined,
+      (error: { code?: string; message?: string }) => error,
+    );
+    expect(failure?.code).toBe('BLOCKED');
+    expect(failure?.message).toContain('挡住');
+    const crate = world.getSnapshot().props.find((prop) => prop.id === 'crate_1');
+    expect(crate).toBeDefined();
+    if (!crate) return;
+    // The crate stopped short of its target instead of pushing through Dash.
+    expect(crate.pos.x).toBeLessThan(landed.pos.x + 0.6);
+    expect(crate.pos.x).toBeGreaterThan(landed.pos.x - 0.1);
+  });
+
   it('wins when Dash joins Echo at the edge of the exit ring', async () => {
     const world = new World(getLevel('sky-02'));
     for (let index = 0; index < 10; index += 1) {
